@@ -20,9 +20,6 @@ export type ResponseTransform = (data: unknown, response: AResponse) => unknown;
 /** Progress event callback */
 export type ProgressCallback = (event: { loaded: number; total: number; progress: number }) => void;
 
-/** Cache key generator function */
-export type CacheKeyGenerator = (config: ResolvedRequestConfig) => string;
-
 /** RetryOn advanced config */
 export interface RetryOnConfig {
     /** Async hook that returns true to trigger retry */
@@ -234,6 +231,14 @@ export interface AFetchInstance {
 
     /** Task API for cancellable requests */
     task: AFetchTask;
+
+    /** Execute multiple requests concurrently and wait for all to complete */
+    all<T extends readonly unknown[]>(requests: {
+        [K in keyof T]: Promise<AResponse<T[K]>>;
+    }): Promise<{ [K in keyof T]: AResponse<T[K]> }>;
+
+    /** Execute multiple requests concurrently and return the first to complete */
+    race<T>(requests: Promise<AResponse<T>>[]): Promise<AResponse<T>>;
 
     /** Default configuration */
     defaults: AFetchConfig;

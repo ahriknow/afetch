@@ -74,22 +74,22 @@ async function allMethods() {
     });
 
     // GET
-    const getTask = api.task.get('/users/1');
+    const getTask = api.task.get<{ id: number; name: string }>('/users/1');
     const getRes = await getTask.wait();
     console.log('GET:', getRes.data);
 
     // POST
-    const postTask = api.task.post('/users', { name: 'New User' });
+    const postTask = api.task.post<{ id: number }>('/users', { name: 'New User' });
     const postRes = await postTask.wait();
     console.log('POST:', postRes.data);
 
     // PUT
-    const putTask = api.task.put('/users/1', { name: 'Updated' });
+    const putTask = api.task.put<{ id: number; name: string }>('/users/1', { name: 'Updated' });
     const putRes = await putTask.wait();
     console.log('PUT:', putRes.data);
 
     // PATCH
-    const patchTask = api.task.patch('/users/1', { name: 'Patched' });
+    const patchTask = api.task.patch<{ id: number; name: string }>('/users/1', { name: 'Patched' });
     const patchRes = await patchTask.wait();
     console.log('PATCH:', patchRes.data);
 
@@ -106,7 +106,7 @@ async function taskWithOptions() {
         baseURL: 'https://jsonplaceholder.typicode.com',
     });
 
-    const task = api.task.get('/users', {
+    const task = api.task.get<{ id: number; name: string }[]>('/users', {
         headers: { 'X-Custom': 'value' },
         params: { _limit: 3 },
         timeout: 5000,
@@ -124,9 +124,9 @@ async function concurrentTasks() {
     });
 
     // Start multiple tasks concurrently
-    const usersTask = api.task.get('/users');
-    const postsTask = api.task.get('/posts');
-    const commentsTask = api.task.get('/comments');
+    const usersTask = api.task.get<{}[]>('/users');
+    const postsTask = api.task.get<{}[]>('/posts');
+    const commentsTask = api.task.get<{}[]>('/comments');
 
     // Wait for all to complete
     const [users, posts, comments] = await Promise.all([

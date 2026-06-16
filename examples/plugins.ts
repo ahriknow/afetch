@@ -7,7 +7,7 @@ import {
     createRetryPlugin,
     createEventBusPlugin,
 } from '../src/index.js';
-import type { AFetchPlugin } from '../src/index.js';
+import type { AFetchPlugin, EventBusPlugin } from '../src/index.js';
 
 // ─── Example 1: Retry Plugin ───────────────────────────────────
 
@@ -65,7 +65,7 @@ async function exponentialBackoffExample() {
         meta: {
             retry: {
                 maxRetries: 4,
-                delay: (attempt) => Math.pow(2, attempt) * 1000,
+                delay: (attempt: number) => Math.pow(2, attempt) * 1000,
             },
         },
     });
@@ -78,7 +78,7 @@ async function eventBusExample() {
         baseURL: 'https://jsonplaceholder.typicode.com',
     });
 
-    const eventBus = createEventBusPlugin();
+    const eventBus: EventBusPlugin = createEventBusPlugin();
     api.use(eventBus);
 
     // Listen to request events

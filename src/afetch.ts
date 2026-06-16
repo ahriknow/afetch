@@ -65,8 +65,11 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
     ): Promise<AResponse<T>> {
         const config = mergeConfig(context, { ...options, url });
 
-        // Run beforeRequest hooks
-        await hooks.runBeforeRequest(config);
+        // Run beforeRequest hooks (may return cached response)
+        const cached = await hooks.runBeforeRequest(config);
+        if (cached) {
+            return cached as AResponse<T>;
+        }
 
         // Execute request
         try {
@@ -156,10 +159,34 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
             }
             const rawResponse = await fetchFn(request);
 
+            // Monitor download progress if callback provided
+            let monitoredResponse = rawResponse;
+            if (config.onDownloadProgress && rawResponse.body) {
+                const contentLength = rawResponse.headers.get('content-length');
+                const total = contentLength ? parseInt(contentLength, 10) : 0;
+                let loaded = 0;
+
+                const progressStream = new TransformStream({
+                    transform(chunk, controller) {
+                        loaded += chunk.byteLength;
+                        const progress = total > 0 ? loaded / total : 0;
+                        config.onDownloadProgress!({ loaded, total, progress });
+                        controller.enqueue(chunk);
+                    },
+                });
+
+                const monitoredBody = rawResponse.body.pipeThrough(progressStream);
+                monitoredResponse = new Response(monitoredBody, {
+                    status: rawResponse.status,
+                    statusText: rawResponse.statusText,
+                    headers: rawResponse.headers,
+                });
+            }
+
             // Parse response data
             let data: unknown;
             try {
-                data = await parseResponse(rawResponse, config.responseType);
+                data = await parseResponse(monitoredResponse, config.responseType);
             } catch (error) {
                 throw new AFetchError(
                     'Failed to parse response',
@@ -176,18 +203,18 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
             // Build the afetch response
             const response: AResponse<T> = {
                 data: transformedData as T,
-                status: rawResponse.status,
-                statusText: rawResponse.statusText,
-                headers: rawResponse.headers,
+                status: monitoredResponse.status,
+                statusText: monitoredResponse.statusText,
+                headers: monitoredResponse.headers,
                 config,
-                raw: rawResponse,
-                ok: rawResponse.ok,
+                raw: monitoredResponse,
+                ok: monitoredResponse.ok,
             };
 
             // Throw on non-2xx status if configured
-            if (config.throwOnError && !rawResponse.ok) {
+            if (config.throwOnError && !monitoredResponse.ok) {
                 throw new AFetchError(
-                    `Request failed with status ${rawResponse.status}`,
+                    `Request failed with status ${monitoredResponse.status}`,
                     AFetchErrorType.HTTP,
                     config,
                     response
@@ -376,6 +403,16 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
             options<T = unknown>(url: string, options?: AFetchOptions): RequestTask<T> {
                 return createTask<T>('OPTIONS', url, options);
             },
+        },
+
+        all<T extends readonly unknown[]>(requests: {
+            [K in keyof T]: Promise<AResponse<T[K]>>;
+        }): Promise<{ [K in keyof T]: AResponse<T[K]> }> {
+            return Promise.all(requests) as Promise<{ [K in keyof T]: AResponse<T[K]> }>;
+        },
+
+        race<T>(requests: Promise<AResponse<T>>[]): Promise<AResponse<T>> {
+            return Promise.race(requests);
         },
 
         defaults: context,

@@ -50,6 +50,7 @@ const {
 } = await import('../src/index.js');
 
 import type { AFetchPluginApi, AFetchPlugin } from '../src/plugin.js';
+import type { EventBusPlugin } from '../src/plugins/event-bus.js';
 
 const BASE_URL = 'https://test.example.com';
 
@@ -522,12 +523,138 @@ describe('afetch', () => {
             // Should only be called once — no retries after abort
             expect(mockFetch).toHaveBeenCalledTimes(1);
         });
+
+        it('should use plugin-level default options', async () => {
+            const api = createTestInstance();
+            api.use(createRetryPlugin({ maxRetries: 2, delay: 10 }));
+
+            mockFetch
+                .mockImplementationOnce(() =>
+                    Promise.resolve(
+                        createMockResponse({
+                            ok: false,
+                            status: 500,
+                            statusText: 'Internal Server Error',
+                            data: { error: 'fail' },
+                        })
+                    )
+                )
+                .mockImplementation(() =>
+                    Promise.resolve(
+                        createMockResponse({
+                            ok: true,
+                            status: 200,
+                            statusText: 'OK',
+                            data: { success: true },
+                        })
+                    )
+                );
+
+            // No meta.retry needed — uses plugin defaults
+            const response = await api.get('/api/test');
+
+            expect(response.status).toBe(200);
+            expect(response.data).toEqual({ success: true });
+            expect(mockFetch).toHaveBeenCalledTimes(2);
+        });
+
+        it('should let request-level options override plugin defaults', async () => {
+            const api = createTestInstance();
+            api.use(createRetryPlugin({ maxRetries: 5, delay: 10 }));
+
+            mockFetch
+                .mockImplementationOnce(() =>
+                    Promise.resolve(
+                        createMockResponse({
+                            ok: false,
+                            status: 500,
+                            statusText: 'Internal Server Error',
+                            data: { error: 'fail' },
+                        })
+                    )
+                )
+                .mockImplementation(() =>
+                    Promise.resolve(
+                        createMockResponse({
+                            ok: true,
+                            status: 200,
+                            statusText: 'OK',
+                            data: { success: true },
+                        })
+                    )
+                );
+
+            // Override maxRetries to 1
+            const response = await api.get('/api/test', {
+                meta: { retry: { maxRetries: 1, delay: 10 } },
+            });
+
+            expect(response.status).toBe(200);
+            expect(mockFetch).toHaveBeenCalledTimes(2);
+        });
+
+        it('should not retry when no plugin defaults and no request config', async () => {
+            const api = createTestInstance();
+            api.use(createRetryPlugin());
+
+            mockFetch.mockImplementationOnce(() =>
+                Promise.resolve(
+                    createMockResponse({
+                        ok: false,
+                        status: 500,
+                        statusText: 'Internal Server Error',
+                        data: { error: 'fail' },
+                    })
+                )
+            );
+
+            await expect(api.get('/api/test')).rejects.toThrow(AFetchError);
+            expect(mockFetch).toHaveBeenCalledTimes(1);
+        });
+
+        it('should retry with plugin defaults and retryOn', async () => {
+            const api = createTestInstance();
+            api.use(
+                createRetryPlugin({
+                    maxRetries: 3,
+                    delay: 10,
+                    retryOn: [500],
+                })
+            );
+
+            mockFetch
+                .mockImplementationOnce(() =>
+                    Promise.resolve(
+                        createMockResponse({
+                            ok: false,
+                            status: 500,
+                            statusText: 'Internal Server Error',
+                            data: { error: 'fail' },
+                        })
+                    )
+                )
+                .mockImplementation(() =>
+                    Promise.resolve(
+                        createMockResponse({
+                            ok: true,
+                            status: 200,
+                            statusText: 'OK',
+                            data: { success: true },
+                        })
+                    )
+                );
+
+            const response = await api.get('/api/test');
+
+            expect(response.status).toBe(200);
+            expect(mockFetch).toHaveBeenCalledTimes(2);
+        });
     });
 
     describe('event bus plugin', () => {
         it('should emit request event', async () => {
             const api = createTestInstance();
-            const eventBus = createEventBusPlugin() as any;
+            const eventBus = createEventBusPlugin();
             api.use(eventBus);
 
             const requestListener = jest.fn<() => void>();
@@ -551,7 +678,7 @@ describe('afetch', () => {
 
         it('should emit response event', async () => {
             const api = createTestInstance();
-            const eventBus = createEventBusPlugin() as any;
+            const eventBus = createEventBusPlugin();
             api.use(eventBus);
 
             const responseListener = jest.fn<() => void>();
@@ -575,7 +702,7 @@ describe('afetch', () => {
 
         it('should emit error event', async () => {
             const api = createTestInstance();
-            const eventBus = createEventBusPlugin() as any;
+            const eventBus = createEventBusPlugin();
             api.use(eventBus);
 
             const errorListener = jest.fn<() => void>();
@@ -598,7 +725,7 @@ describe('afetch', () => {
 
         it('should allow unsubscribing', async () => {
             const api = createTestInstance();
-            const eventBus = createEventBusPlugin() as any;
+            const eventBus = createEventBusPlugin();
             api.use(eventBus);
 
             const requestListener = jest.fn<() => void>();
@@ -1154,7 +1281,7 @@ describe('afetch', () => {
     describe('event bus plugin off()', () => {
         it('should support off() with no args to clear all listeners', async () => {
             const api = createTestInstance();
-            const eventBus = createEventBusPlugin() as any;
+            const eventBus = createEventBusPlugin();
             api.use(eventBus);
 
             const requestListener = jest.fn<() => void>();

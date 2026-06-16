@@ -100,14 +100,19 @@ async function buildResponse(raw: Response, config: ResolvedRequestConfig): Prom
 
 // ─── Plugin factory ────────────────────────────────────────────
 
-export function createRetryPlugin(): AFetchPlugin {
+export function createRetryPlugin(defaultOptions?: RetryOptions): AFetchPlugin {
     return {
         name: 'retry',
 
         install(api: AFetchPluginApi): void {
             api.addHook('onError', async ({ config, error }) => {
-                const opts = config.meta?.retry as RetryOptions | undefined;
-                if (!opts) return undefined;
+                const requestOpts = config.meta?.retry as RetryOptions | undefined;
+
+                // Merge plugin defaults with request-level options
+                // If neither exists, don't retry
+                if (!defaultOptions && !requestOpts) return undefined;
+
+                const opts: RetryOptions = { ...defaultOptions, ...requestOpts };
 
                 // Never retry on abort or timeout — these are intentional cancellations
                 if (error.code === AFetchErrorType.ABORT || error.code === AFetchErrorType.TIMEOUT)

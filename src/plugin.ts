@@ -21,7 +21,9 @@ export interface OnErrorContext {
     error: AFetchError;
 }
 
-export type BeforeRequestHook = (ctx: BeforeRequestContext) => void | Promise<void>;
+export type BeforeRequestHook = (
+    ctx: BeforeRequestContext
+) => AResponse | void | Promise<AResponse | void>;
 export type AfterResponseHook = (
     ctx: AfterResponseContext
 ) => AResponse | void | Promise<AResponse | void>;
@@ -62,11 +64,15 @@ export class HookRunner {
         this.onError.push(fn);
     }
 
-    async runBeforeRequest(config: ResolvedRequestConfig): Promise<void> {
+    async runBeforeRequest(config: ResolvedRequestConfig): Promise<AResponse | undefined> {
         const ctx: BeforeRequestContext = { config };
         for (const hook of this.beforeRequest) {
-            await hook(ctx);
+            const result = await hook(ctx);
+            if (result) {
+                return result;
+            }
         }
+        return undefined;
     }
 
     async runAfterResponse(config: ResolvedRequestConfig, response: AResponse): Promise<AResponse> {

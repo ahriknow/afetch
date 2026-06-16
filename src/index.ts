@@ -18,7 +18,6 @@ export type {
     RequestTransform,
     ResponseTransform,
     ProgressCallback,
-    CacheKeyGenerator,
     AFetchOptions,
     ResolvedRequestConfig,
     AResponse,
@@ -41,12 +40,21 @@ export type {
 } from './plugin.js';
 
 // Default plugins
-export { createRetryPlugin, createEventBusPlugin } from './plugins/index.js';
-export type { RetryOptions } from './plugins/index.js';
-export type { RequestEventData, ResponseEventData, ErrorEventData } from './plugins/index.js';
+export {
+    createRetryPlugin,
+    createEventBusPlugin,
+    createQueuePlugin,
+    RequestQueue,
+    createCachePlugin,
+    ResponseCache,
+} from './plugins/index.js';
+export type { RetryOptions, QueueOptions, QueuePlugin, CacheOptions } from './plugins/index.js';
+export type {
+    RequestEventData,
+    ResponseEventData,
+    ErrorEventData,
+    EventBusPlugin,
+} from './plugins/index.js';
 
 // Event emitter
 export { Emitter } from './events.js';
-
-// Default export
-export { afetch as default } from './afetch.js';

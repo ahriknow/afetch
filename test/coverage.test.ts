@@ -894,3 +894,807 @@ describe('shouldSerializeAsJSON direct', () => {
         expect(shouldSerializeAsJSON({ key: 'value' })).toBe(true);
     });
 });
+
+// ─── Test: all() and race() ────────────────────────────────────
+
+describe('all() and race()', () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+        globalThis.fetch = originalFetch;
+    });
+
+    it('should execute all requests concurrently', async () => {
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            return Promise.resolve(
+                new Response(JSON.stringify({ ok: true }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+
+        const results = await api.all([
+            api.get('/api/a'),
+            api.get('/api/b'),
+            api.get('/api/c'),
+        ]);
+
+        expect(results).toHaveLength(3);
+        expect(results[0].status).toBe(200);
+        expect(results[1].status).toBe(200);
+        expect(results[2].status).toBe(200);
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('should return first completed response via race()', async () => {
+        let resolveFirst!: (value: Response) => void;
+        const firstPromise = new Promise<Response>((resolve) => {
+            resolveFirst = resolve;
+        });
+
+        let callCount = 0;
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            callCount++;
+            if (callCount === 1) {
+                return firstPromise;
+            }
+            return Promise.resolve(
+                new Response(JSON.stringify({ winner: true }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+
+        const racePromise = api.race([
+            api.get('/api/slow'),
+            api.get('/api/fast'),
+        ]);
+
+        // The second request completes first
+        const result = await racePromise;
+        expect(result.status).toBe(200);
+
+        // Clean up the slow request
+        resolveFirst(
+            new Response(JSON.stringify({ slow: true }), {
+                status: 200,
+                statusText: 'OK',
+                headers: { 'content-type': 'application/json' },
+            })
+        );
+    });
+});
+
+// ─── Test: download progress ───────────────────────────────────
+
+describe('download progress', () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+        globalThis.fetch = originalFetch;
+    });
+
+    it('should call onDownloadProgress during download', async () => {
+        const body = JSON.stringify({ data: 'test content' });
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            const stream = new ReadableStream({
+                start(controller) {
+                    controller.enqueue(new TextEncoder().encode(body));
+                    controller.close();
+                },
+            });
+            return Promise.resolve(
+                new Response(stream, {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: {
+                        'content-type': 'application/json',
+                        'content-length': String(body.length),
+                    },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        const progressFn = jest.fn<(event: { loaded: number; total: number; progress: number }) => void>();
+
+        const response = await api.get('/api/download', {
+            onDownloadProgress: progressFn,
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.data).toEqual({ data: 'test content' });
+        expect(progressFn).toHaveBeenCalled();
+        const calls = progressFn.mock.calls;
+        const lastEvent = calls[calls.length - 1]![0];
+        expect(lastEvent.loaded).toBe(body.length);
+        expect(lastEvent.total).toBe(body.length);
+        expect(lastEvent.progress).toBe(1);
+    });
+
+    it('should handle download without content-length', async () => {
+        const body = JSON.stringify({ data: 'test' });
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            const stream = new ReadableStream({
+                start(controller) {
+                    controller.enqueue(new TextEncoder().encode(body));
+                    controller.close();
+                },
+            });
+            return Promise.resolve(
+                new Response(stream, {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        const progressFn = jest.fn();
+
+        const response = await api.get('/api/download', {
+            onDownloadProgress: progressFn,
+        });
+
+        expect(response.status).toBe(200);
+        expect(progressFn).toHaveBeenCalled();
+    });
+});
+
+// ─── Test: RequestQueue ────────────────────────────────────────
+
+describe('RequestQueue', () => {
+    it('should limit concurrent requests', async () => {
+        const { RequestQueue } = await import('../src/plugins/queue.js');
+        const queue = new RequestQueue(2);
+
+        let running = 0;
+        let maxRunning = 0;
+
+        const fn = async () => {
+            running++;
+            maxRunning = Math.max(maxRunning, running);
+            await new Promise((r) => setTimeout(r, 50));
+            running--;
+            return 'done';
+        };
+
+        const results = await Promise.all([
+            queue.run(fn),
+            queue.run(fn),
+            queue.run(fn),
+            queue.run(fn),
+        ]);
+
+        expect(results).toEqual(['done', 'done', 'done', 'done']);
+        expect(maxRunning).toBeLessThanOrEqual(2);
+    });
+
+    it('should use default maxConcurrent', async () => {
+        const { RequestQueue } = await import('../src/plugins/queue.js');
+        const queue = new RequestQueue(); // default = 6
+        const result = await queue.run(async () => 'ok');
+        expect(result).toBe('ok');
+    });
+
+    it('should report pending and queued counts', async () => {
+        const { RequestQueue } = await import('../src/plugins/queue.js');
+        const queue = new RequestQueue(1);
+
+        expect(queue.pending).toBe(0);
+        expect(queue.queued).toBe(0);
+
+        let resolveFirst!: () => void;
+        const firstPromise = new Promise<void>((resolve) => {
+            resolveFirst = resolve;
+        });
+
+        // Start a blocking request
+        const p1 = queue.run(() => firstPromise);
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(queue.pending).toBe(1);
+
+        // Queue another
+        const p2 = queue.run(async () => 'second');
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(queue.queued).toBe(1);
+
+        resolveFirst();
+        await p1;
+        await new Promise((r) => setTimeout(r, 50));
+
+        expect(queue.pending).toBeLessThanOrEqual(1);
+        await p2;
+    });
+
+    it('should clear queue and reject waiting items', async () => {
+        const { RequestQueue } = await import('../src/plugins/queue.js');
+        const queue = new RequestQueue(1);
+
+        let resolveFirst!: () => void;
+        const p1 = queue.run(() => new Promise<void>((r) => { resolveFirst = r; }));
+        await new Promise((r) => setTimeout(r, 10));
+
+        const p2 = queue.run(async () => 'second');
+        queue.clear();
+
+        await expect(p2).rejects.toThrow('Queue cleared');
+
+        resolveFirst();
+        await p1;
+    });
+});
+
+// ─── Test: createQueuePlugin ───────────────────────────────────
+
+describe('createQueuePlugin', () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+        globalThis.fetch = originalFetch;
+    });
+
+    it('should create a queue plugin', async () => {
+        const { createQueuePlugin } = await import('../src/plugins/queue.js');
+        const plugin = createQueuePlugin({ maxConcurrent: 5 });
+        expect(plugin.name).toBe('queue');
+        expect(typeof plugin.install).toBe('function');
+    });
+
+    it('should create with default options', async () => {
+        const { createQueuePlugin } = await import('../src/plugins/queue.js');
+        const plugin = createQueuePlugin();
+        expect(plugin.name).toBe('queue');
+        plugin.install({ addHook: jest.fn() } as any);
+    });
+
+    it('should limit concurrent requests automatically', async () => {
+        const { createQueuePlugin } = await import('../src/plugins/queue.js');
+
+        let running = 0;
+        let maxRunning = 0;
+
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            running++;
+            maxRunning = Math.max(maxRunning, running);
+            return new Promise<Response>((resolve) => {
+                setTimeout(() => {
+                    running--;
+                    resolve(
+                        new Response(JSON.stringify({ ok: true }), {
+                            status: 200,
+                            statusText: 'OK',
+                            headers: { 'content-type': 'application/json' },
+                        })
+                    );
+                }, 50);
+            });
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        const queuePlugin = createQueuePlugin({ maxConcurrent: 2 });
+        api.use(queuePlugin);
+
+        const results = await Promise.all([
+            api.get('/a'),
+            api.get('/b'),
+            api.get('/c'),
+            api.get('/d'),
+        ]);
+
+        expect(results).toHaveLength(4);
+        expect(maxRunning).toBeLessThanOrEqual(2);
+    });
+
+    it('should report pending and queued counts via hooks', async () => {
+        const { createQueuePlugin } = await import('../src/plugins/queue.js');
+
+        let resolveFirst!: (value: Response) => void;
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            return new Promise<Response>((resolve) => {
+                resolveFirst = resolve;
+            });
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        const queuePlugin = createQueuePlugin({ maxConcurrent: 1 });
+        api.use(queuePlugin);
+
+        expect(queuePlugin.pending).toBe(0);
+        expect(queuePlugin.queued).toBe(0);
+
+        // Start first request — occupies the only slot
+        const p1 = api.get('/first');
+        await new Promise((r) => setTimeout(r, 10));
+        expect(queuePlugin.pending).toBe(1);
+
+        // Start second request — should be queued
+        const p2 = api.get('/second');
+        await new Promise((r) => setTimeout(r, 10));
+        expect(queuePlugin.queued).toBe(1);
+
+        // Complete first request
+        resolveFirst(
+            new Response(JSON.stringify({ first: true }), {
+                status: 200,
+                statusText: 'OK',
+                headers: { 'content-type': 'application/json' },
+            })
+        );
+        await p1;
+        await new Promise((r) => setTimeout(r, 10));
+
+        // Second request should now be running
+        expect(queuePlugin.pending).toBeLessThanOrEqual(1);
+
+        // Complete second request
+        resolveFirst(
+            new Response(JSON.stringify({ second: true }), {
+                status: 200,
+                statusText: 'OK',
+                headers: { 'content-type': 'application/json' },
+            })
+        );
+        await p2;
+    });
+
+    it('should clear queue and reject waiting requests', async () => {
+        const { createQueuePlugin } = await import('../src/plugins/queue.js');
+
+        let resolveFirst!: (value: Response) => void;
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            return new Promise<Response>((resolve) => {
+                resolveFirst = resolve;
+            });
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        const queuePlugin = createQueuePlugin({ maxConcurrent: 1 });
+        api.use(queuePlugin);
+
+        // First request blocks the only slot
+        const p1 = api.get('/first');
+        await new Promise((r) => setTimeout(r, 10));
+
+        // Second request is queued
+        const p2 = api.get('/second');
+        await new Promise((r) => setTimeout(r, 10));
+        expect(queuePlugin.queued).toBe(1);
+
+        // Clear — second request should be rejected
+        queuePlugin.clear();
+        await expect(p2).rejects.toThrow('Queue cleared');
+
+        // Complete first request
+        resolveFirst(
+            new Response(JSON.stringify({ first: true }), {
+                status: 200,
+                statusText: 'OK',
+                headers: { 'content-type': 'application/json' },
+            })
+        );
+        await p1;
+    });
+
+    it('should release slot on error', async () => {
+        const { createQueuePlugin } = await import('../src/plugins/queue.js');
+
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            return Promise.resolve(
+                new Response(JSON.stringify({ error: 'fail' }), {
+                    status: 500,
+                    statusText: 'Internal Server Error',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        const queuePlugin = createQueuePlugin({ maxConcurrent: 1 });
+        api.use(queuePlugin);
+
+        // Request fails — slot should be released via onError
+        await expect(api.get('/fail')).rejects.toThrow(AFetchError);
+        expect(queuePlugin.pending).toBe(0);
+    });
+
+    it('should work with default maxConcurrent', async () => {
+        const { createQueuePlugin } = await import('../src/plugins/queue.js');
+
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            return Promise.resolve(
+                new Response(JSON.stringify({ ok: true }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        const queuePlugin = createQueuePlugin();
+        api.use(queuePlugin);
+
+        const response = await api.get('/test');
+        expect(response.status).toBe(200);
+    });
+});
+
+// ─── Test: ResponseCache ───────────────────────────────────────
+
+describe('ResponseCache', () => {
+    it('should store and retrieve cache entries', async () => {
+        const { ResponseCache } = await import('../src/plugins/cache.js');
+        const cache = new ResponseCache(5000, 100);
+
+        const response = {
+            data: { id: 1 },
+            status: 200,
+            statusText: 'OK',
+            headers: new Headers(),
+            config: {} as any,
+            raw: {} as any,
+            ok: true,
+        };
+
+        cache.set('key1', response);
+        expect(cache.has('key1')).toBe(true);
+        expect(cache.size).toBe(1);
+
+        const cached = cache.get('key1');
+        expect(cached).toEqual(response);
+    });
+
+    it('should return undefined for expired entries', async () => {
+        const { ResponseCache } = await import('../src/plugins/cache.js');
+        const cache = new ResponseCache(1, 100); // 1ms max age
+
+        cache.set('key1', { data: 'test' } as any);
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(cache.get('key1')).toBeUndefined();
+        expect(cache.has('key1')).toBe(false);
+    });
+
+    it('should evict oldest entries when max size exceeded', async () => {
+        const { ResponseCache } = await import('../src/plugins/cache.js');
+        const cache = new ResponseCache(60000, 2);
+
+        cache.set('a', { data: 'a' } as any);
+        await new Promise((r) => setTimeout(r, 5));
+        cache.set('b', { data: 'b' } as any);
+        await new Promise((r) => setTimeout(r, 5));
+        cache.set('c', { data: 'c' } as any);
+
+        expect(cache.size).toBe(2);
+        expect(cache.has('a')).toBe(false); // evicted
+        expect(cache.has('b')).toBe(true);
+        expect(cache.has('c')).toBe(true);
+    });
+
+    it('should delete and clear entries', async () => {
+        const { ResponseCache } = await import('../src/plugins/cache.js');
+        const cache = new ResponseCache();
+
+        cache.set('key1', { data: 'a' } as any);
+        cache.set('key2', { data: 'b' } as any);
+        expect(cache.size).toBe(2);
+
+        cache.delete('key1');
+        expect(cache.size).toBe(1);
+
+        cache.clear();
+        expect(cache.size).toBe(0);
+    });
+
+    it('should return undefined for non-existent keys', async () => {
+        const { ResponseCache } = await import('../src/plugins/cache.js');
+        const cache = new ResponseCache();
+        expect(cache.get('missing')).toBeUndefined();
+    });
+});
+
+// ─── Test: createCachePlugin ───────────────────────────────────
+
+describe('createCachePlugin', () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+        globalThis.fetch = originalFetch;
+    });
+
+    it('should create a cache plugin', async () => {
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+        const plugin = createCachePlugin({ maxAge: 10000, maxSize: 50 });
+        expect(plugin.name).toBe('cache');
+        expect(typeof plugin.install).toBe('function');
+    });
+
+    it('should cache GET responses and return cached on second call', async () => {
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+
+        let callCount = 0;
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            callCount++;
+            return Promise.resolve(
+                new Response(JSON.stringify({ count: callCount }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        api.use(createCachePlugin({ maxAge: 60000 }));
+
+        const res1 = await api.get('/api/data');
+        const res2 = await api.get('/api/data');
+
+        expect(res1.data).toEqual({ count: 1 });
+        expect(res2.data).toEqual({ count: 1 });
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not cache POST requests', async () => {
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            return Promise.resolve(
+                new Response(JSON.stringify({ ok: true }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        api.use(createCachePlugin());
+
+        await api.post('/api/data', { a: 1 });
+        await api.post('/api/data', { a: 1 });
+
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not cache non-2xx responses', async () => {
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+
+        let callCount = 0;
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            callCount++;
+            return Promise.resolve(
+                new Response(JSON.stringify({ error: 'fail' }), {
+                    status: 500,
+                    statusText: 'Internal Server Error',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        api.use(createCachePlugin());
+
+        // Use throwOnError: false so afterResponse hook is reached
+        const res1 = await api.get('/api/fail', { throwOnError: false });
+        const res2 = await api.get('/api/fail', { throwOnError: false });
+
+        // Both should hit network (not cached)
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(2);
+        expect(res1.status).toBe(500);
+        expect(res2.status).toBe(500);
+    });
+
+    it('should expire cached entries after maxAge', async () => {
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+
+        let callCount = 0;
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            callCount++;
+            return Promise.resolve(
+                new Response(JSON.stringify({ count: callCount }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        api.use(createCachePlugin({ maxAge: 50 }));
+
+        const res1 = await api.get('/api/data');
+        expect(res1.data).toEqual({ count: 1 });
+
+        await new Promise((r) => setTimeout(r, 80));
+
+        const res2 = await api.get('/api/data');
+        expect(res2.data).toEqual({ count: 2 });
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should evict oldest entries when maxSize exceeded', async () => {
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            return Promise.resolve(
+                new Response(JSON.stringify({ ok: true }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        api.use(createCachePlugin({ maxAge: 60000, maxSize: 2 }));
+
+        await api.get('/api/a');
+        await new Promise((r) => setTimeout(r, 5));
+        await api.get('/api/b');
+        await new Promise((r) => setTimeout(r, 5));
+        await api.get('/api/c');
+
+        // /api/a was evicted, /api/b and /api/c are cached
+        // Calling /api/a again should make a new request (evicts /api/b)
+        await api.get('/api/a');
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(4);
+
+        // /api/b was evicted by /api/a re-entry, so it's a cache miss
+        await api.get('/api/b');
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(5);
+
+        // /api/a should still be cached
+        await api.get('/api/a');
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(5);
+    });
+
+    it('should cache with query parameters as part of key', async () => {
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+
+        let callCount = 0;
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            callCount++;
+            return Promise.resolve(
+                new Response(JSON.stringify({ count: callCount }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        api.use(createCachePlugin({ maxAge: 60000 }));
+
+        await api.get('/api/data', { params: { page: 1 } });
+        await api.get('/api/data', { params: { page: 2 } });
+        await api.get('/api/data', { params: { page: 1 } });
+
+        // page=1 and page=2 are different cache keys
+        // Third call hits cache for page=1
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should install with default options', async () => {
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+        const plugin = createCachePlugin();
+        expect(plugin.name).toBe('cache');
+    });
+
+    it('should skip caching when shouldCache returns false', async () => {
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            return Promise.resolve(
+                new Response(JSON.stringify({ ok: true }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        api.use(createCachePlugin({
+            shouldCache: () => false,
+        }));
+
+        await api.get('/api/data');
+        await api.get('/api/data');
+
+        // Both calls hit network (not cached)
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should use custom maxAge from shouldCache', async () => {
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+
+        let callCount = 0;
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            callCount++;
+            return Promise.resolve(
+                new Response(JSON.stringify({ count: callCount }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        api.use(createCachePlugin({
+            maxAge: 60000,
+            shouldCache: () => ({ maxAge: 50 }),
+        }));
+
+        const res1 = await api.get('/api/data');
+        expect(res1.data).toEqual({ count: 1 });
+
+        // Wait for custom maxAge (50ms) to expire
+        await new Promise((r) => setTimeout(r, 80));
+
+        const res2 = await api.get('/api/data');
+        expect(res2.data).toEqual({ count: 2 });
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should cache with default maxAge when shouldCache returns true', async () => {
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+
+        let callCount = 0;
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() => {
+            callCount++;
+            return Promise.resolve(
+                new Response(JSON.stringify({ count: callCount }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        api.use(createCachePlugin({
+            maxAge: 60000,
+            shouldCache: () => true,
+        }));
+
+        const res1 = await api.get('/api/data');
+        const res2 = await api.get('/api/data');
+
+        expect(res1.data).toEqual({ count: 1 });
+        expect(res2.data).toEqual({ count: 1 });
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(1);
+    });
+});
