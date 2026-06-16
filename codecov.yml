@@ -1,0 +1,11 @@
+codecov:
+  branch: develop
+
+coverage:
+  status:
+    project:
+      default:
+        target: 100%
+    patch:
+      default:
+        target: 100%
