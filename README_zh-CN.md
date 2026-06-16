@@ -8,7 +8,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@ahriknow/afetch.svg)](https://www.npmjs.com/package/@ahriknow/afetch)
 [![license](https://img.shields.io/npm/l/@ahriknow/afetch.svg)](./LICENSE)
-[![codecov](https://codecov.io/gh/ahriknow/afetch/graph/badge.svg?token=NDSDK60RUM)](https://codecov.io/gh/ahriknow/afetch)
+[![codecov](https://codecov.io/gh/ahriknow/afetch/branch/develop/graph/badge.svg?token=NDSDK60RUM)](https://codecov.io/gh/ahriknow/afetch)
 [![typescript](https://img.shields.io/badge/TypeScript-7.0-blue.svg)](https://www.typescriptlang.org/)
 
 </div>
