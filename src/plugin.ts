@@ -29,9 +29,6 @@ export type AfterResponseHook = (
 ) => AResponse | void | Promise<AResponse | void>;
 export type OnErrorHook = (ctx: OnErrorContext) => AResponse | void | Promise<AResponse | void>;
 
-/** Cleanup function returned by plugin.use() */
-export type PluginCleanup = () => void;
-
 // ─── Plugin interface ──────────────────────────────────────────
 
 export interface AFetchPluginApi {

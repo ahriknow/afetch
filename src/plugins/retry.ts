@@ -12,6 +12,7 @@ import type {
 import { AFetchErrorType } from '../types.js';
 import { AFetchError } from '../error.js';
 import type { AFetchPlugin, AFetchPluginApi } from '../plugin.js';
+import { buildURL, parseResponse, resolveFetchFn } from '../utils.js';
 
 // ─── Retry options (stored in config.meta.retry) ───────────────
 
@@ -60,13 +61,9 @@ async function checkRetryOn(
 }
 
 function executeFetch(config: ResolvedRequestConfig): Promise<Response> {
-    let fetchFn: typeof fetch;
-    if (config.fetchAdapter) {
-        fetchFn = config.fetchAdapter;
-    } else {
-        fetchFn = globalThis.fetch;
-    }
-    const request = new Request(config.baseURL + config.url, {
+    const fetchFn = resolveFetchFn(config);
+    const fullURL = buildURL(config.baseURL, config.url, config.params);
+    const request = new Request(fullURL, {
         method: config.method,
         headers: config.headers,
         body: config.body as BodyInit | null,
@@ -83,7 +80,7 @@ function executeFetch(config: ResolvedRequestConfig): Promise<Response> {
 async function buildResponse(raw: Response, config: ResolvedRequestConfig): Promise<AResponse> {
     let data: unknown;
     try {
-        data = await raw.json();
+        data = await parseResponse(raw, config.responseType);
     } catch {
         data = undefined;
     }

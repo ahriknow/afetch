@@ -36,7 +36,6 @@ export type {
     BeforeRequestHook,
     AfterResponseHook,
     OnErrorHook,
-    PluginCleanup,
 } from './plugin.js';
 
 // Default plugins

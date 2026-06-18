@@ -5,6 +5,7 @@
 
 import type { ResolvedRequestConfig, AResponse } from '../types.js';
 import type { AFetchPlugin, AFetchPluginApi } from '../plugin.js';
+import { buildURL } from '../utils.js';
 
 /** Return type for the shouldCache callback */
 export interface CacheDecision {
@@ -32,11 +33,8 @@ interface CacheEntry {
 }
 
 function defaultCacheKey(config: ResolvedRequestConfig): string {
-    const url = config.baseURL + config.url;
-    const params = config.params
-        ? '?' + new URLSearchParams(config.params as Record<string, string>).toString()
-        : '';
-    return `GET:${url}${params}`;
+    const url = buildURL(config.baseURL, config.url, config.params);
+    return `GET:${url}`;
 }
 
 /**
@@ -49,11 +47,9 @@ export function createCachePlugin(options: CacheOptions = {}): AFetchPlugin {
     const cache = new Map<string, CacheEntry>();
 
     function evict(): void {
-        if (cache.size <= maxSize) return;
-        const entries = [...cache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
-        const toRemove = cache.size - maxSize;
-        for (let i = 0; i < toRemove; i++) {
-            cache.delete(entries[i][0]);
+        while (cache.size > maxSize) {
+            const oldest = cache.keys().next().value;
+            if (oldest !== undefined) cache.delete(oldest);
         }
     }
 
@@ -155,11 +151,9 @@ export class ResponseCache {
     }
 
     private evict(): void {
-        if (this.cache.size <= this.maxSize) return;
-        const entries = [...this.cache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
-        const toRemove = this.cache.size - this.maxSize;
-        for (let i = 0; i < toRemove; i++) {
-            this.cache.delete(entries[i][0]);
+        while (this.cache.size > this.maxSize) {
+            const oldest = this.cache.keys().next().value;
+            if (oldest !== undefined) this.cache.delete(oldest);
         }
     }
 }

@@ -5,7 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.0.3] - 2026-06-18
+
+### Fixed
+
+- Retry plugin `executeFetch` now uses `buildURL` for proper URL construction with query params
+- Retry plugin `buildResponse` now respects `responseType` instead of always trying `json()`
+- Cache plugin `defaultCacheKey` now uses `buildURL` and filters `null`/`undefined` params
+- Content-Type case sensitivity: `executeRequest` now checks both `content-type` and `Content-Type` to prevent overwriting user-set headers
+
+### Changed
+
+- `mergeConfig` simplified with `resolveOpt`/`resolveFallback`/`resolveValue` helpers, reducing ~120 lines to ~30 lines
+- Extracted shared `resolveFetchFn` utility to eliminate duplicated fetch adapter resolution logic
+- Cache plugin `evict()` and `ResponseCache.evict()` optimized from O(n log n) to O(1) using Map insertion order
+- Removed unused `PluginCleanup` type export
+- Removed unused `QueueItem.fn` field from `RequestQueue`
+- Installed missing `typescript-eslint` dependency for ESLint flat config
 
 ## [0.0.2] - 2026-06-16
 

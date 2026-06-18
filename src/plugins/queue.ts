@@ -114,7 +114,6 @@ export function createQueuePlugin(options: QueueOptions = {}): QueuePlugin {
  * ```
  */
 interface QueueItem {
-    fn: () => Promise<unknown>;
     resolve: (value: unknown) => void;
     reject: (reason: unknown) => void;
 }
@@ -132,7 +131,6 @@ export class RequestQueue {
         if (this.running >= this.maxConcurrent) {
             await new Promise<void>((resolve, reject) => {
                 this.queue.push({
-                    fn: fn as () => Promise<unknown>,
                     resolve: resolve as (value: unknown) => void,
                     reject,
                 });

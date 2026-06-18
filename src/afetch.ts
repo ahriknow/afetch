@@ -23,6 +23,7 @@ import {
     parseResponse,
     transformData,
     createTimeoutController,
+    resolveFetchFn,
 } from './utils.js';
 
 /**
@@ -125,7 +126,11 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
             body = transformData(body, config.transformRequest, headers) as BodyInit;
 
             // Auto-serialize plain objects to JSON
-            if (shouldSerializeAsJSON(body) && !headers['content-type']) {
+            if (
+                shouldSerializeAsJSON(body) &&
+                !headers['content-type'] &&
+                !headers['Content-Type']
+            ) {
                 headers['content-type'] = 'application/json';
                 body = JSON.stringify(body);
             }
@@ -151,12 +156,7 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
             });
 
             // Execute the fetch
-            let fetchFn: typeof fetch;
-            if (config.fetchAdapter) {
-                fetchFn = config.fetchAdapter;
-            } else {
-                fetchFn = globalThis.fetch;
-            }
+            const fetchFn = resolveFetchFn(config);
             const rawResponse = await fetchFn(request);
 
             // Monitor download progress if callback provided

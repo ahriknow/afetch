@@ -139,6 +139,51 @@ export function shouldSerializeAsJSON(data: unknown): boolean {
     return true;
 }
 
+/** Resolve value with 3-level fallback: options > defaults > fallback */
+function resolveOpt<T>(
+    options: T | undefined | null,
+    defaults: T | undefined | null,
+    fallback: T
+): T {
+    if (options !== undefined && options !== null) {
+        return options;
+    }
+    if (defaults !== undefined && defaults !== null) {
+        return defaults;
+    }
+    return fallback;
+}
+
+/** Resolve value with 2-level fallback: options > defaults */
+function resolveFallback<T>(
+    options: T | undefined | null,
+    defaults: T | undefined | null
+): T | undefined {
+    if (options !== undefined && options !== null) {
+        return options;
+    }
+    if (defaults !== undefined && defaults !== null) {
+        return defaults;
+    }
+    return undefined;
+}
+
+/** Resolve a single value with fallback */
+function resolveValue<T>(val: T | undefined | null, fallback: T): T {
+    if (val !== undefined && val !== null) {
+        return val;
+    }
+    return fallback;
+}
+
+/** Resolve the fetch function from config */
+export function resolveFetchFn(config: ResolvedRequestConfig): typeof fetch {
+    if (config.fetchAdapter) {
+        return config.fetchAdapter;
+    }
+    return globalThis.fetch;
+}
+
 /**
  * Merge request options with defaults
  */
@@ -146,39 +191,17 @@ export function mergeConfig(
     defaults: AFetchConfig,
     options: AFetchOptions = {}
 ): ResolvedRequestConfig {
-    let method: ResolvedRequestConfig['method'];
-    if (options.method) {
-        method = options.method.toUpperCase() as ResolvedRequestConfig['method'];
-    } else {
-        method = 'GET';
-    }
+    const method = (
+        options.method ? options.method.toUpperCase() : 'GET'
+    ) as ResolvedRequestConfig['method'];
 
-    let baseURL: string;
-    if (options.baseURL) {
-        baseURL = options.baseURL;
-    } else if (defaults.baseURL) {
-        baseURL = defaults.baseURL;
-    } else {
-        baseURL = '';
-    }
+    const baseURL = resolveOpt(options.baseURL, defaults.baseURL, '');
 
     // Merge headers
-    let defaultHeaders: Record<string, string>;
-    if (defaults.headers) {
-        defaultHeaders = defaults.headers;
-    } else {
-        defaultHeaders = {};
-    }
-    let optionHeaders: Record<string, string>;
-    if (options.headers) {
-        optionHeaders = options.headers;
-    } else {
-        optionHeaders = {};
-    }
     const mergedHeaders: Record<string, string> = {
         ...DEFAULT_HEADERS,
-        ...defaultHeaders,
-        ...optionHeaders,
+        ...defaults.headers,
+        ...options.headers,
     };
 
     // Remove Content-Type for GET/HEAD requests without body
@@ -188,150 +211,42 @@ export function mergeConfig(
     }
 
     // Merge meta
-    let defaultsMeta: Record<string, unknown>;
-    if (defaults.meta !== undefined && defaults.meta !== null) {
-        defaultsMeta = defaults.meta;
-    } else {
-        defaultsMeta = {};
-    }
-    let optionsMeta: Record<string, unknown>;
-    if (options.meta !== undefined && options.meta !== null) {
-        optionsMeta = options.meta;
-    } else {
-        optionsMeta = {};
-    }
-    const mergedMeta = { ...defaultsMeta, ...optionsMeta };
-
-    // Resolve url
-    let url: string;
-    if (options.url !== undefined && options.url !== null) {
-        url = options.url;
-    } else {
-        url = '';
-    }
-
-    // Resolve timeout
-    let timeout: number;
-    if (options.timeout !== undefined && options.timeout !== null) {
-        timeout = options.timeout;
-    } else if (defaults.timeout !== undefined && defaults.timeout !== null) {
-        timeout = defaults.timeout;
-    } else {
-        timeout = DEFAULT_CONFIG.timeout;
-    }
-
-    // Resolve responseType
-    let responseType: ResolvedRequestConfig['responseType'];
-    if (options.responseType !== undefined && options.responseType !== null) {
-        responseType = options.responseType;
-    } else if (defaults.responseType !== undefined && defaults.responseType !== null) {
-        responseType = defaults.responseType;
-    } else {
-        responseType = DEFAULT_CONFIG.responseType;
-    }
-
-    // Resolve cache
-    let cache: RequestCache;
-    if (options.cache !== undefined && options.cache !== null) {
-        cache = options.cache;
-    } else if (defaults.cache !== undefined && defaults.cache !== null) {
-        cache = defaults.cache;
-    } else {
-        cache = DEFAULT_CONFIG.cache;
-    }
-
-    // Resolve credentials
-    let credentials: RequestCredentials;
-    if (options.credentials !== undefined && options.credentials !== null) {
-        credentials = options.credentials;
-    } else if (defaults.credentials !== undefined && defaults.credentials !== null) {
-        credentials = defaults.credentials;
-    } else {
-        credentials = DEFAULT_CONFIG.credentials;
-    }
-
-    // Resolve redirect
-    let redirect: RequestRedirect;
-    if (options.redirect !== undefined && options.redirect !== null) {
-        redirect = options.redirect;
-    } else if (defaults.redirect !== undefined && defaults.redirect !== null) {
-        redirect = defaults.redirect;
-    } else {
-        redirect = DEFAULT_CONFIG.redirect;
-    }
-
-    // Resolve referrer
-    let referrer: string | undefined;
-    if (options.referrer !== undefined && options.referrer !== null) {
-        referrer = options.referrer;
-    } else {
-        referrer = defaults.referrer;
-    }
-
-    // Resolve referrerPolicy
-    let referrerPolicy: ReferrerPolicy | undefined;
-    if (options.referrerPolicy !== undefined && options.referrerPolicy !== null) {
-        referrerPolicy = options.referrerPolicy;
-    } else {
-        referrerPolicy = defaults.referrerPolicy;
-    }
-
-    // Resolve transformRequest
-    let transformRequest: RequestTransform | RequestTransform[] | undefined;
-    if (options.transformRequest !== undefined && options.transformRequest !== null) {
-        transformRequest = options.transformRequest;
-    } else {
-        transformRequest = defaults.transformRequest;
-    }
-
-    // Resolve transformResponse
-    let transformResponse: ResponseTransform | ResponseTransform[] | undefined;
-    if (options.transformResponse !== undefined && options.transformResponse !== null) {
-        transformResponse = options.transformResponse;
-    } else {
-        transformResponse = defaults.transformResponse;
-    }
-
-    // Resolve throwOnError
-    let throwOnError: boolean;
-    if (options.throwOnError !== undefined && options.throwOnError !== null) {
-        throwOnError = options.throwOnError;
-    } else if (defaults.throwOnError !== undefined && defaults.throwOnError !== null) {
-        throwOnError = defaults.throwOnError;
-    } else {
-        throwOnError = DEFAULT_CONFIG.throwOnError;
-    }
-
-    // Resolve fetchAdapter
-    let fetchAdapter: typeof fetch | undefined;
-    if (options.fetchAdapter !== undefined && options.fetchAdapter !== null) {
-        fetchAdapter = options.fetchAdapter;
-    } else {
-        fetchAdapter = defaults.fetchAdapter;
-    }
+    const mergedMeta = { ...defaults.meta, ...options.meta };
 
     return {
-        url,
+        url: resolveValue(options.url, ''),
         baseURL,
         method,
         headers: mergedHeaders,
         body: options.body,
-        timeout,
+        timeout: resolveOpt(options.timeout, defaults.timeout, DEFAULT_CONFIG.timeout),
         signal: options.signal,
-        responseType,
-        cache,
-        credentials,
-        redirect,
-        referrer,
-        referrerPolicy,
+        responseType: resolveOpt(
+            options.responseType,
+            defaults.responseType,
+            DEFAULT_CONFIG.responseType
+        ),
+        cache: resolveOpt(options.cache, defaults.cache, DEFAULT_CONFIG.cache),
+        credentials: resolveOpt(
+            options.credentials,
+            defaults.credentials,
+            DEFAULT_CONFIG.credentials
+        ),
+        redirect: resolveOpt(options.redirect, defaults.redirect, DEFAULT_CONFIG.redirect),
+        referrer: resolveFallback(options.referrer, defaults.referrer),
+        referrerPolicy: resolveFallback(options.referrerPolicy, defaults.referrerPolicy),
         params: options.params,
-        transformRequest,
-        transformResponse,
+        transformRequest: resolveFallback(options.transformRequest, defaults.transformRequest),
+        transformResponse: resolveFallback(options.transformResponse, defaults.transformResponse),
         onUploadProgress: options.onUploadProgress,
         onDownloadProgress: options.onDownloadProgress,
         meta: mergedMeta,
-        throwOnError,
-        fetchAdapter,
+        throwOnError: resolveOpt(
+            options.throwOnError,
+            defaults.throwOnError,
+            DEFAULT_CONFIG.throwOnError
+        ),
+        fetchAdapter: resolveFallback(options.fetchAdapter, defaults.fetchAdapter),
     };
 }
 
