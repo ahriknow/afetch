@@ -50,3 +50,51 @@
 | `HTTP` | 非 2xx 响应 |
 | `PARSE` | 响应解析错误 |
 | `CONFIG` | 配置错误 |
+
+## SSE 模块 (`@ahriknow/afetch/sse`)
+
+### 客户端方法
+
+| 方法 | 说明 |
+|--------|------|
+| `createSSE(url, options?)` | 创建 SSE 客户端实例 |
+| `createAutoReconnectPlugin(options?)` | 创建自动重连插件 |
+| `sse.connect()` | 打开 SSE 连接 |
+| `sse.close()` | 关闭连接并停止重连 |
+| `sse.use(plugin)` | 安装插件 |
+
+### SSE 客户端属性
+
+| 属性 | 类型 | 说明 |
+|----------|------|------|
+| `sse.state` | `SSEState` | 连接状态：`CONNECTING`、`OPEN`、`CLOSED` |
+| `sse.url` | `string` | 完整连接 URL |
+| `sse.reconnectCount` | `number` | 成功重连的次数 |
+| `sse.defaults` | `SSEConfig` | 当前配置（只读） |
+
+### SSE 事件 (`SSEEvent`)
+
+| 属性 | 类型 | 说明 |
+|----------|------|------|
+| `event` | `string \| undefined` | 事件类型（默认: `'message'`） |
+| `data` | `string` | 事件数据 |
+| `id` | `string \| undefined` | 最后的事件 ID |
+| `retry` | `number \| undefined` | 重连时间（毫秒） |
+
+### SSE 错误类型 (`SSEErrorType`)
+
+| 代码 | 说明 |
+|------|------|
+| `NETWORK` | 网络或 HTTP 错误 |
+| `PARSE` | SSE 数据解析错误 |
+| `TIMEOUT` | 连接超时 |
+| `CONFIG` | 配置错误 |
+
+### SSE 插件钩子
+
+| 钩子 | 上下文 | 返回值 |
+|------|---------|--------|
+| `connect` | `{ config, url }` | `void` |
+| `message` | `{ config, event }` | `void` |
+| `error` | `{ config, error, attempt }` | `false` 阻止重连，`void` 允许重连 |
+| `close` | `{ config, reconnectCount }` | `void` |

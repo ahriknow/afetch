@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.5] - 2026-06-22
+
+### Added
+
+- **SSE module**: Server-Sent Events client as an independent sub-module, importable from `@ahriknow/afetch/sse`
+  - `createSSE()` — factory for SSE client with full state management (CONNECTING/OPEN/CLOSED)
+  - Plugin system with `connect`, `message`, `error`, `close` lifecycle hooks
+  - Built-in auto-reconnect plugin (`createAutoReconnectPlugin`) with configurable max attempts, custom delay, and reconnect predicate
+  - SSE protocol parsing: handles `event`, `data`, `id`, `retry` fields, multiline data, comment lines, and `\r\n`/`\r` normalization
+  - Dynamic retry field updating from server-sent `retry:` values
+  - `SSEError` class with typed error codes (`NETWORK`, `PARSE`, `TIMEOUT`, `CONFIG`) and convenience getters
+  - Full TypeScript support with exported types: `SSEConfig`, `SSEEvent`, `SSEClient`, `SSEState`, `SSEErrorType`
+  - 100% test coverage (53 tests)
+
 ## [0.0.4] - 2026-06-22
 
 ### Fixed

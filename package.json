@@ -11,6 +11,11 @@
             "types": "./dist/index.d.ts",
             "import": "./dist/index.js",
             "default": "./dist/index.js"
+        },
+        "./sse": {
+            "types": "./dist/sse/index.d.ts",
+            "import": "./dist/sse/index.js",
+            "default": "./dist/sse/index.js"
         }
     },
     "files": [
@@ -39,7 +44,10 @@
         "plugin",
         "retry",
         "abort",
-        "timeout"
+        "timeout",
+        "sse",
+        "server-sent-events",
+        "eventsource"
     ],
     "author": "ahriknow <ahriknow@ahriknow.com>",
     "license": "MIT",
