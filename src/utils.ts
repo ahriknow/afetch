@@ -7,6 +7,7 @@ import type {
     ResolvedRequestConfig,
     AFetchOptions,
     AFetchConfig,
+    AResponse,
     RequestTransform,
     ResponseTransform,
 } from './types.js';
@@ -154,7 +155,7 @@ function resolveOpt<T>(
     return fallback;
 }
 
-/** Resolve value with 2-level fallback: options > defaults */
+/** Resolve value with 2-level fallback: options > defaults, returns undefined if neither */
 function resolveFallback<T>(
     options: T | undefined | null,
     defaults: T | undefined | null
@@ -172,6 +173,14 @@ function resolveFallback<T>(
 function resolveValue<T>(val: T | undefined | null, fallback: T): T {
     if (val !== undefined && val !== null) {
         return val;
+    }
+    return fallback;
+}
+
+/** Extract a fallback error message from an unknown error value */
+export function getErrorMessage(err: unknown, fallback: string): string {
+    if (err instanceof Error && err.message) {
+        return err.message;
     }
     return fallback;
 }
@@ -195,7 +204,16 @@ export function mergeConfig(
         options.method ? options.method.toUpperCase() : 'GET'
     ) as ResolvedRequestConfig['method'];
 
+    const url = resolveValue(options.url, '');
     const baseURL = resolveOpt(options.baseURL, defaults.baseURL, '');
+
+    // Validate: require either a non-empty url or a baseURL
+    if (!url && !baseURL) {
+        // Throw a CONFIG error - will be caught and wrapped by the afetch function
+        const err = new Error('URL is required: provide either a url or a baseURL');
+        (err as any).code = 'ECONFIG';
+        throw err;
+    }
 
     // Merge headers
     const mergedHeaders: Record<string, string> = {
@@ -205,16 +223,16 @@ export function mergeConfig(
     };
 
     // Remove Content-Type for GET/HEAD requests without body
+    // Note: mergeHeaders lowercases all keys, so only 'content-type' needs checking
     if (!shouldHaveBody(method) && !options.body) {
         delete mergedHeaders['content-type'];
-        delete mergedHeaders['Content-Type'];
     }
 
     // Merge meta
     const mergedMeta = { ...defaults.meta, ...options.meta };
 
     return {
-        url: resolveValue(options.url, ''),
+        url,
         baseURL,
         method,
         headers: mergedHeaders,
@@ -276,19 +294,35 @@ export async function parseResponse(
 }
 
 /**
- * Transform data using transform functions
+ * Transform data using request transform functions
  */
 export function transformData<T>(
     data: T,
-    transforms?: RequestTransform | RequestTransform[] | ResponseTransform | ResponseTransform[],
-    arg?: unknown
+    transforms?: RequestTransform | RequestTransform[],
+    headers: Record<string, string> = {}
 ): unknown {
     if (!transforms) return data;
 
     const transformArray = Array.isArray(transforms) ? transforms : [transforms];
 
     return transformArray.reduce((result, transform) => {
-        return transform(result, arg as any);
+        return transform(result, headers);
+    }, data as unknown);
+}
+
+/**
+ * Transform data using response transform functions.
+ * Note: caller must ensure transforms is defined before calling.
+ */
+export function transformResponseData<T>(
+    data: T,
+    transforms: ResponseTransform | ResponseTransform[],
+    response: AResponse
+): unknown {
+    const transformArray = Array.isArray(transforms) ? transforms : [transforms];
+
+    return transformArray.reduce((result, transform) => {
+        return transform(result, response);
     }, data as unknown);
 }
 

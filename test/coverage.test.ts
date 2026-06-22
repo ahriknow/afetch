@@ -1698,3 +1698,146 @@ describe('createCachePlugin', () => {
         expect(mockGlobalFetch).toHaveBeenCalledTimes(1);
     });
 });
+
+// ─── Test: CONFIG error when no URL or baseURL ──────────────────
+
+describe('CONFIG error for missing URL', () => {
+    it('should throw CONFIG error when no url and no baseURL', async () => {
+        const api = createInstance();
+
+        try {
+            await api.request('');
+            expect(true).toBe(false);
+        } catch (error: any) {
+            expect(error).toBeInstanceOf(AFetchError);
+            expect(error.code).toBe(AFetchErrorType.CONFIG);
+            expect(error.message).toContain('URL is required');
+        }
+    });
+
+    it('should throw when mergeConfig has no url and no baseURL', async () => {
+        const { mergeConfig } = await import('../src/utils.js');
+        expect(() => {
+            mergeConfig({}, { method: 'GET', url: '' });
+        }).toThrow('URL is required: provide either a url or a baseURL');
+    });
+});
+
+// ─── Test: retry plugin with request transforms ─────────────────
+
+describe('retry plugin with request transforms', () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+        globalThis.fetch = originalFetch;
+    });
+
+    it('should apply transformRequest during retry', async () => {
+        let callCount = 0;
+        let lastContentType: string | null = null;
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation((input) => {
+            callCount++;
+            if (input instanceof Request) {
+                lastContentType = input.headers.get('content-type');
+            }
+            if (callCount <= 1) {
+                return Promise.resolve(
+                    new Response(JSON.stringify({ error: 'fail' }), {
+                        status: 500,
+                        statusText: 'Internal Server Error',
+                        headers: { 'content-type': 'application/json' },
+                    })
+                );
+            }
+            return Promise.resolve(
+                new Response(JSON.stringify({ success: true }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        api.use(createRetryPlugin({ maxRetries: 2, delay: 10 }));
+
+        const response = await api.post('/api/test', { name: 'test' }, {
+            meta: { retry: { maxRetries: 2, delay: 10 } },
+            transformRequest: (data: any) => ({ ...data, transformed: true }),
+        });
+
+        expect(response.status).toBe(200);
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(2);
+        expect(lastContentType).toBe('application/json');
+    });
+
+    it('should auto-serialize JSON body during retry', async () => {
+        let callCount = 0;
+        let lastContentType: string | null = null;
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation((input) => {
+            callCount++;
+            if (input instanceof Request) {
+                lastContentType = input.headers.get('content-type');
+            }
+            if (callCount <= 1) {
+                return Promise.resolve(
+                    new Response(JSON.stringify({ error: 'fail' }), {
+                        status: 500,
+                        statusText: 'Internal Server Error',
+                        headers: { 'content-type': 'application/json' },
+                    })
+                );
+            }
+            return Promise.resolve(
+                new Response(JSON.stringify({ success: true }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: { 'content-type': 'application/json' },
+                })
+            );
+        });
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        api.use(createRetryPlugin({ maxRetries: 2, delay: 10 }));
+
+        const response = await api.post('/api/test', { key: 'value' }, {
+            meta: { retry: { maxRetries: 2, delay: 10 } },
+        });
+
+        expect(response.status).toBe(200);
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(2);
+        expect(lastContentType).toBe('application/json');
+    });
+});
+
+// ─── Test: transformData direct coverage ─────────────────────────
+
+describe('transformData direct', () => {
+    it('should handle single transform function (non-array)', async () => {
+        const { transformData } = await import('../src/utils.js');
+        const result = transformData({ a: 1 }, (data: any) => ({ ...data, b: 2 }), {});
+        expect(result).toEqual({ a: 1, b: 2 });
+    });
+
+    it('should handle array of transform functions', async () => {
+        const { transformData } = await import('../src/utils.js');
+        const result = transformData(
+            { a: 1 },
+            [
+                (data: any) => ({ ...data, b: 2 }),
+                (data: any) => ({ ...data, c: 3 }),
+            ],
+            {}
+        );
+        expect(result).toEqual({ a: 1, b: 2, c: 3 });
+    });
+
+    it('should use default empty headers when not provided', async () => {
+        const { transformData } = await import('../src/utils.js');
+        // Call without headers argument to trigger default value branch
+        const result = transformData({ a: 1 }, (data: any) => ({ ...data, b: 2 }));
+        expect(result).toEqual({ a: 1, b: 2 });
+    });
+});

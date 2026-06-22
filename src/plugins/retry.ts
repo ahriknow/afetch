@@ -12,7 +12,15 @@ import type {
 import { AFetchErrorType } from '../types.js';
 import { AFetchError } from '../error.js';
 import type { AFetchPlugin, AFetchPluginApi } from '../plugin.js';
-import { buildURL, parseResponse, resolveFetchFn } from '../utils.js';
+import {
+    buildURL,
+    parseResponse,
+    resolveFetchFn,
+    shouldHaveBody,
+    shouldSerializeAsJSON,
+    transformData,
+    getErrorMessage,
+} from '../utils.js';
 
 // ─── Retry options (stored in config.meta.retry) ───────────────
 
@@ -63,10 +71,28 @@ async function checkRetryOn(
 function executeFetch(config: ResolvedRequestConfig): Promise<Response> {
     const fetchFn = resolveFetchFn(config);
     const fullURL = buildURL(config.baseURL, config.url, config.params);
+
+    // Apply body transforms and auto JSON serialization (same as executeRequest in afetch.ts)
+    let body = config.body;
+    const headers = { ...config.headers };
+
+    if (shouldHaveBody(config.method) && body !== undefined && body !== null) {
+        // Apply request transforms
+        body = transformData(body, config.transformRequest, headers) as BodyInit;
+
+        // Auto-serialize plain objects to JSON
+        if (shouldSerializeAsJSON(body) && !headers['content-type']) {
+            headers['content-type'] = 'application/json';
+            body = JSON.stringify(body);
+        }
+    } else {
+        body = undefined;
+    }
+
     const request = new Request(fullURL, {
         method: config.method,
-        headers: config.headers,
-        body: config.body as BodyInit | null,
+        headers,
+        body: body as BodyInit | null,
         signal: config.signal,
         cache: config.cache,
         credentials: config.credentials,
@@ -165,14 +191,8 @@ export function createRetryPlugin(defaultOptions?: RetryOptions): AFetchPlugin {
                         if (e instanceof AFetchError) {
                             error = e;
                         } else {
-                            let errorMessage: string;
-                            if ((e as Error).message) {
-                                errorMessage = (e as Error).message;
-                            } else {
-                                errorMessage = 'Retry failed';
-                            }
                             error = new AFetchError(
-                                errorMessage,
+                                getErrorMessage(e, 'Retry failed'),
                                 AFetchErrorType.NETWORK,
                                 config,
                                 undefined,

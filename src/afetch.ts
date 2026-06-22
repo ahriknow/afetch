@@ -22,8 +22,10 @@ import {
     shouldSerializeAsJSON,
     parseResponse,
     transformData,
+    transformResponseData,
     createTimeoutController,
     resolveFetchFn,
+    getErrorMessage,
 } from './utils.js';
 
 /**
@@ -64,7 +66,30 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
         url: string,
         options?: AFetchOptions
     ): Promise<AResponse<T>> {
-        const config = mergeConfig(context, { ...options, url });
+        let config: ResolvedRequestConfig;
+        try {
+            config = mergeConfig(context, { ...options, url });
+        } catch (err) {
+            // Config validation errors (e.g., missing URL)
+            throw new AFetchError(
+                getErrorMessage(err, 'Invalid configuration'),
+                AFetchErrorType.CONFIG,
+                {
+                    url: '',
+                    baseURL: '',
+                    method: 'GET',
+                    headers: {},
+                    timeout: 0,
+                    responseType: 'json',
+                    cache: 'default',
+                    credentials: 'same-origin',
+                    redirect: 'follow',
+                    throwOnError: true,
+                },
+                undefined,
+                err as Error
+            );
+        }
 
         // Run beforeRequest hooks (may return cached response)
         const cached = await hooks.runBeforeRequest(config);
@@ -84,15 +109,8 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
             if (error instanceof AFetchError) {
                 afetchError = error;
             } else {
-                const rawMessage = (error as Error).message;
-                let message: string;
-                if (rawMessage) {
-                    message = rawMessage;
-                } else {
-                    message = 'Request failed';
-                }
                 afetchError = new AFetchError(
-                    message,
+                    getErrorMessage(error, 'Request failed'),
                     AFetchErrorType.NETWORK,
                     config,
                     undefined,
@@ -197,12 +215,9 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
                 );
             }
 
-            // Apply response transforms
-            const transformedData = transformData(data, config.transformResponse);
-
-            // Build the afetch response
-            const response: AResponse<T> = {
-                data: transformedData as T,
+            // Build the afetch response (with raw data first)
+            let response: AResponse<T> = {
+                data: data as T,
                 status: monitoredResponse.status,
                 statusText: monitoredResponse.statusText,
                 headers: monitoredResponse.headers,
@@ -210,6 +225,19 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
                 raw: monitoredResponse,
                 ok: monitoredResponse.ok,
             };
+
+            // Apply response transforms (pass the response to transforms)
+            if (config.transformResponse) {
+                const transformedData = transformResponseData(
+                    data,
+                    config.transformResponse,
+                    response
+                );
+                response = {
+                    ...response,
+                    data: transformedData as T,
+                };
+            }
 
             // Throw on non-2xx status if configured
             if (config.throwOnError && !monitoredResponse.ok) {
@@ -242,15 +270,8 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
             }
 
             // Handle network errors
-            const networkMessage = (error as Error).message;
-            let networkError: string;
-            if (networkMessage) {
-                networkError = networkMessage;
-            } else {
-                networkError = 'Network error';
-            }
             throw new AFetchError(
-                networkError,
+                getErrorMessage(error, 'Network error'),
                 AFetchErrorType.NETWORK,
                 config,
                 undefined,
@@ -273,7 +294,6 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
         const controller = new AbortController();
         let aborted = false;
         let done = false;
-        let responsePromise: Promise<AResponse<T>> | null = null;
 
         // Determine if data argument is provided (POST, PUT, PATCH)
         const hasBody = ['POST', 'PUT', 'PATCH'].includes(method);
@@ -309,10 +329,7 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
                 }
             },
             wait() {
-                if (!responsePromise) {
-                    responsePromise = requestPromise;
-                }
-                return responsePromise;
+                return requestPromise;
             },
             get aborted() {
                 return aborted;

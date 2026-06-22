@@ -46,6 +46,8 @@ export function createCachePlugin(options: CacheOptions = {}): AFetchPlugin {
     const shouldCache = options.shouldCache;
     const cache = new Map<string, CacheEntry>();
 
+    // Evict oldest entries when cache exceeds maxSize.
+    // Map preserves insertion order (ES2015), so keys().next() returns the oldest entry (FIFO).
     function evict(): void {
         while (cache.size > maxSize) {
             const oldest = cache.keys().next().value;
@@ -71,13 +73,14 @@ export function createCachePlugin(options: CacheOptions = {}): AFetchPlugin {
             });
 
             api.addHook('afterResponse', ({ config, response }) => {
-                if (config.method !== 'GET') return;
-                if (!response.ok) return;
+                // Only cache successful GET requests
+                if (config.method !== 'GET') return undefined;
+                if (!response.ok) return undefined;
 
                 // Determine cache decision
                 if (shouldCache) {
                     const decision = shouldCache(config, response);
-                    if (decision === false) return response;
+                    if (decision === false) return undefined;
                     const entryMaxAge =
                         decision === true || decision === undefined
                             ? defaultMaxAge
@@ -89,7 +92,7 @@ export function createCachePlugin(options: CacheOptions = {}): AFetchPlugin {
                     cache.set(key, { response, timestamp: Date.now(), maxAge: defaultMaxAge });
                 }
                 evict();
-                return response;
+                return undefined;
             });
         },
     };

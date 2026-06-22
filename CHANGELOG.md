@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.4] - 2026-06-22
+
+### Fixed
+
+- **mergeConfig**: Removed dead code `delete mergedHeaders['Content-Type']` — `mergeHeaders` lowercases all header keys, so only `content-type` needs checking
+- **Retry plugin**: `executeFetch` now applies `transformRequest` and automatic JSON serialization (same as the main request flow), preventing retried requests from sending raw objects
+- **Cache plugin**: Unified `afterResponse` hook return value to always return `undefined` (was inconsistently returning `response` in some paths)
+
+### Changed
+
+- **transformData**: Split into two type-safe functions — `transformData` (request transforms, accepts `headers`) and `transformResponseData` (response transforms, accepts `AResponse`)
+- **Error handling**: Extracted `getErrorMessage(err, fallback)` utility to eliminate duplicate `(error as Error).message` patterns across `afetch.ts` and `retry.ts`
+- **Config validation**: `mergeConfig` now validates that at least `url` or `baseURL` is provided, throwing a `CONFIG` error early instead of producing malformed requests
+- **createTask**: Removed redundant `responsePromise` variable — `wait()` now directly returns `requestPromise`
+
+### Added
+
+- `getErrorMessage` utility exported from `src/utils.ts`
+
 ## [0.0.3] - 2026-06-18
 
 ### Fixed

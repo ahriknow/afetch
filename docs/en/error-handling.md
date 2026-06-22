@@ -24,6 +24,12 @@ try {
             case AFetchErrorType.ABORT:
                 console.log('Request aborted');
                 break;
+            case AFetchErrorType.CONFIG:
+                console.log('Configuration error');
+                break;
+            case AFetchErrorType.PARSE:
+                console.log('Response parse error');
+                break;
         }
     }
 }

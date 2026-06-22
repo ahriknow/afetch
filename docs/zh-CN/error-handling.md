@@ -24,6 +24,12 @@ try {
             case AFetchErrorType.ABORT:
                 console.log('请求已取消');
                 break;
+            case AFetchErrorType.CONFIG:
+                console.log('配置错误');
+                break;
+            case AFetchErrorType.PARSE:
+                console.log('响应解析错误');
+                break;
         }
     }
 }
