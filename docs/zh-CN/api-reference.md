@@ -98,3 +98,54 @@
 | `message` | `{ config, event }` | `void` |
 | `error` | `{ config, error, attempt }` | `false` 阻止重连，`void` 允许重连 |
 | `close` | `{ config, reconnectCount }` | `void` |
+
+## WebSocket 模块 (`@ahriknow/afetch/ws`)
+
+### 客户端方法
+
+| 方法 | 说明 |
+|------|------|
+| `createWS(url, config?)` | 创建 WebSocket 客户端实例 |
+| `createAutoReconnectPlugin(options?)` | 创建自动重连插件 |
+| `createRequestSyncPlugin(options?)` | 创建请求同步插件 |
+| `ws.connect()` | 打开 WebSocket 连接 |
+| `ws.close(code?, reason?)` | 关闭连接并停止重连 |
+| `ws.send(data)` | 通过 WebSocket 发送数据 |
+| `ws.use(plugin)` | 安装插件 |
+
+### WebSocket 客户端属性
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `ws.state` | `WSState` | 连接状态：`CLOSED`、`CONNECTING`、`OPEN`、`CLOSING` |
+| `ws.url` | `string` | 完整连接 URL |
+| `ws.reconnectCount` | `number` | 成功重连的次数 |
+| `ws.defaults` | `WSConfig` | 当前配置（只读） |
+
+### WebSocket 消息 (`WSMessage`)
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `data` | `unknown` | 解析后的消息数据（启用 `autoParse` 时） |
+| `raw` | `string` | 原始消息数据字符串 |
+| `origin` | `string \| undefined` | 消息事件的来源 |
+| `timestamp` | `number` | 消息接收的时间戳 |
+
+### WebSocket 错误类型 (`WSErrorType`)
+
+| 代码 | 说明 |
+|------|------|
+| `NETWORK` | 连接失败或丢失 |
+| `PARSE` | 消息解析/序列化错误 |
+| `TIMEOUT` | 连接或发送超时 |
+| `CONFIG` | URL 或配置错误 |
+
+### WebSocket 插件钩子
+
+| 钩子 | 上下文 | 返回值 |
+|------|---------|--------|
+| `open` | `{ config, url }` | `void` |
+| `message` | `{ config, message }` | `void` |
+| `error` | `{ config, error, attempt }` | `false` 阻止重连，`void` 允许重连 |
+| `close` | `{ config, code, reason, reconnectCount, wasClean }` | `void` |
+| `send` | `{ config, data }` | `void` |

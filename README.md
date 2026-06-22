@@ -23,6 +23,7 @@ A lightweight, type-safe, plugin-based fetch API wrapper for modern JavaScript/T
 - 🔁 **Retry Plugin** — Automatic retry with exponential backoff, status matching, and custom hooks
 - 📡 **Event Bus Plugin** — Observe request lifecycle via events
 - 📨 **SSE Support** — Server-Sent Events client with plugin system and auto-reconnect (`@ahriknow/afetch/sse`)
+- 🔌 **WebSocket Support** — WebSocket client with plugin system, auto-reconnect, and request-sync (`@ahriknow/afetch/ws`)
 - ⏱️ **Timeout** — Request timeout with automatic abort
 - ❌ **Cancellation** — AbortController support + Task API for fine-grained control
 - 📊 **Progress** — Upload and download progress tracking
@@ -253,6 +254,7 @@ Plugins are installed once per instance — calling `use()` with the same plugin
 | [Configuration](./docs/en/configuration.md) | Instance and per-request configuration options |
 | [API Reference](./docs/en/api-reference.md) | Complete API reference |
 | [SSE (Server-Sent Events)](./docs/en/sse.md) | SSE client with plugin system and auto-reconnect |
+| [WebSocket](./docs/en/ws.md) | WebSocket client with plugin system, auto-reconnect, and request-sync |
 
 ## License
 

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.0.5] - 2026-06-22
+## [0.0.5]
 
 ### Added
 
@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `SSEError` class with typed error codes (`NETWORK`, `PARSE`, `TIMEOUT`, `CONFIG`) and convenience getters
   - Full TypeScript support with exported types: `SSEConfig`, `SSEEvent`, `SSEClient`, `SSEState`, `SSEErrorType`
   - 100% test coverage (53 tests)
+- **WebSocket module**: WebSocket client as an independent sub-module, importable from `@ahriknow/afetch/ws`
+  - `createWS()` — factory for WebSocket client with full state management (CLOSED/CONNECTING/OPEN/CLOSING)
+  - Plugin system with `open`, `message`, `error`, `close`, `send` lifecycle hooks
+  - Built-in auto-reconnect plugin (`createAutoReconnectPlugin`) with configurable max attempts, custom delay, and reconnect predicate
+  - Built-in request-sync plugin (`createRequestSyncPlugin`) for request-response pattern over WebSocket with ID matching
+  - Auto JSON parse/serialize (`autoParse` config option)
+  - Connection timeout and heartbeat support
+  - `WSError` class with typed error codes (`NETWORK`, `PARSE`, `TIMEOUT`, `CONFIG`) and convenience getters
+  - Full TypeScript support with exported types: `WSConfig`, `WSMessage`, `WSClient`, `WSState`, `WSErrorType`
+  - 100% test coverage (363 tests total)
 
 ## [0.0.4] - 2026-06-22
 

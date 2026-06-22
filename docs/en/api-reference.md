@@ -98,3 +98,54 @@
 | `message` | `{ config, event }` | `void` |
 | `error` | `{ config, error, attempt }` | `false` to prevent reconnect, `void` to allow |
 | `close` | `{ config, reconnectCount }` | `void` |
+
+## WebSocket Module (`@ahriknow/afetch/ws`)
+
+### Client Methods
+
+| Method | Description |
+|--------|-------------|
+| `createWS(url, config?)` | Create a WebSocket client instance |
+| `createAutoReconnectPlugin(options?)` | Create an auto-reconnect plugin |
+| `createRequestSyncPlugin(options?)` | Create a request-sync plugin |
+| `ws.connect()` | Open the WebSocket connection |
+| `ws.close(code?, reason?)` | Close the connection and stop reconnects |
+| `ws.send(data)` | Send data through the WebSocket |
+| `ws.use(plugin)` | Install a plugin |
+
+### WebSocket Client Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `ws.state` | `WSState` | Connection state: `CLOSED`, `CONNECTING`, `OPEN`, `CLOSING` |
+| `ws.url` | `string` | Full connection URL |
+| `ws.reconnectCount` | `number` | Number of successful reconnections |
+| `ws.defaults` | `WSConfig` | Current configuration (readonly) |
+
+### WebSocket Message (`WSMessage`)
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `data` | `unknown` | Parsed message data (if `autoParse` is enabled) |
+| `raw` | `string` | Raw message data string |
+| `origin` | `string \| undefined` | Origin of the message event |
+| `timestamp` | `number` | Timestamp when the message was received |
+
+### WebSocket Error Types (`WSErrorType`)
+
+| Code | Description |
+|------|-------------|
+| `NETWORK` | Connection failed or lost |
+| `PARSE` | Message parse/serialization error |
+| `TIMEOUT` | Connection or send timeout |
+| `CONFIG` | URL or configuration error |
+
+### WebSocket Plugin Hooks
+
+| Hook | Context | Return |
+|------|---------|--------|
+| `open` | `{ config, url }` | `void` |
+| `message` | `{ config, message }` | `void` |
+| `error` | `{ config, error, attempt }` | `false` to prevent reconnect, `void` to allow |
+| `close` | `{ config, code, reason, reconnectCount, wasClean }` | `void` |
+| `send` | `{ config, data }` | `void` |

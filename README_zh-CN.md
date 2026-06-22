@@ -23,6 +23,7 @@
 - 🔁 **重试插件** — 自动重试，支持指数退避、状态码匹配、自定义 hook
 - 📡 **事件总线插件** — 通过事件监听请求生命周期
 - 📨 **SSE 支持** — Server-Sent Events 客户端，配备插件系统和自动重连 (`@ahriknow/afetch/sse`)
+- 🔌 **WebSocket 支持** — WebSocket 客户端，配备插件系统、自动重连和请求同步 (`@ahriknow/afetch/ws`)
 - ⏱️ **超时** — 请求超时自动中断
 - ❌ **取消** — 支持 AbortController + Task API 细粒度控制
 - 📊 **进度** — 上传和下载进度追踪
@@ -253,6 +254,7 @@ api.use(loggerPlugin);
 | [配置](./docs/zh-CN/configuration.md) | 实例和单次请求配置选项 |
 | [API 参考](./docs/zh-CN/api-reference.md) | 完整 API 参考 |
 | [SSE（Server-Sent Events）](./docs/zh-CN/sse.md) | SSE 客户端，配备插件系统和自动重连 |
+| [WebSocket](./docs/zh-CN/ws.md) | WebSocket 客户端，配备插件系统、自动重连和请求同步 |
 
 ## 许可证
 
