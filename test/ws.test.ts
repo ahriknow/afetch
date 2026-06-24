@@ -2872,10 +2872,9 @@ describe('createRequestSyncPlugin', () => {
 
         await flushMicrotasks();
 
-        // raw should be the String() representation of the ArrayBuffer
-        const ctx = onMessage.mock.calls[0][0] as { message: { raw: string } };
-        expect(typeof ctx.message.raw).toBe('string');
-        expect(ctx.message.raw).toBe('[object ArrayBuffer]');
+        // raw should be the original data (ArrayBuffer), not a stringified version
+        const ctx = onMessage.mock.calls[0][0] as { message: { raw: unknown } };
+        expect(ctx.message.raw).toBeInstanceOf(ArrayBuffer);
 
         ws.close();
         await flushMicrotasks();

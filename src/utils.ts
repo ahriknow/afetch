@@ -215,15 +215,14 @@ export function mergeConfig(
         throw err;
     }
 
-    // Merge headers
-    const mergedHeaders: Record<string, string> = {
-        ...DEFAULT_HEADERS,
-        ...defaults.headers,
-        ...options.headers,
-    };
+    // Merge headers (normalize keys to lowercase)
+    const mergedHeaders: Record<string, string> = mergeHeaders(
+        DEFAULT_HEADERS,
+        defaults.headers,
+        options.headers
+    );
 
     // Remove Content-Type for GET/HEAD requests without body
-    // Note: mergeHeaders lowercases all keys, so only 'content-type' needs checking
     if (!shouldHaveBody(method) && !options.body) {
         delete mergedHeaders['content-type'];
     }
@@ -364,4 +363,28 @@ export function createTimeoutController(
             }
         },
     };
+}
+
+/**
+ * Combine multiple AbortSignals into one.
+ * Aborting any of the signals will abort the combined signal.
+ */
+export function combineSignals(...signals: AbortSignal[]): AbortSignal {
+    const controller = new AbortController();
+
+    for (const signal of signals) {
+        if (signal.aborted) {
+            controller.abort(signal.reason);
+            return controller.signal;
+        }
+        signal.addEventListener(
+            'abort',
+            () => {
+                controller.abort(signal.reason);
+            },
+            { once: true }
+        );
+    }
+
+    return controller.signal;
 }

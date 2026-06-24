@@ -229,7 +229,10 @@ export function createSSE(url: string, config: SSEConfig = {}): SSEClient {
                     });
 
                     // Update retry interval from event if specified
-                    if (event.retry !== undefined) {
+                    if (
+                        event.retry !== undefined &&
+                        typeof mergedConfig.reconnectDelay !== 'function'
+                    ) {
                         mergedConfig.reconnectDelay = event.retry;
                         defaults.reconnectDelay = event.retry;
                     }

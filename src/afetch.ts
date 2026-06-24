@@ -26,6 +26,7 @@ import {
     createTimeoutController,
     resolveFetchFn,
     getErrorMessage,
+    combineSignals,
 } from './utils.js';
 
 /**
@@ -303,11 +304,14 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
             : (dataOrOptions as AFetchOptions | undefined);
 
         // Merge user signal with our controller signal
+        const mergedSignal = options?.signal
+            ? combineSignals(controller.signal, options.signal)
+            : controller.signal;
         const mergedOptions: AFetchOptions = {
             ...options,
             method: method as any,
             body,
-            signal: controller.signal,
+            signal: mergedSignal,
         };
 
         // Start the request immediately

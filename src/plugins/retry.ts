@@ -81,7 +81,7 @@ function executeFetch(config: ResolvedRequestConfig): Promise<Response> {
         body = transformData(body, config.transformRequest, headers) as BodyInit;
 
         // Auto-serialize plain objects to JSON
-        if (shouldSerializeAsJSON(body) && !headers['content-type']) {
+        if (shouldSerializeAsJSON(body) && !headers['content-type'] && !headers['Content-Type']) {
             headers['content-type'] = 'application/json';
             body = JSON.stringify(body);
         }

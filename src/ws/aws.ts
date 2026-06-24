@@ -159,9 +159,10 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
         };
 
         socket.onmessage = (event: MessageEvent) => {
-            const raw = typeof event.data === 'string' ? event.data : String(event.data);
+            const raw = event.data;
 
-            const data = config.autoParse !== false ? parseWSMessage(raw) : raw;
+            const data =
+                config.autoParse !== false && typeof raw === 'string' ? parseWSMessage(raw) : raw;
 
             const message = {
                 data,

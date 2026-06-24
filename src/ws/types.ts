@@ -34,8 +34,8 @@ export enum WSErrorType {
 export interface WSMessage {
     /** Message data (parsed if autoParse is enabled) */
     data: unknown;
-    /** Raw message data string */
-    raw: string;
+    /** Raw message data */
+    raw: unknown;
     /** Origin of the message event */
     origin?: string;
     /** Timestamp when the message was received */

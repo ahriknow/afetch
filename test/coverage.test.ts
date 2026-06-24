@@ -1841,3 +1841,127 @@ describe('transformData direct', () => {
         expect(result).toEqual({ a: 1, b: 2 });
     });
 });
+
+// ─── Test: combineSignals ──────────────────────────────────────
+
+describe('combineSignals', () => {
+    it('should abort when any signal aborts', async () => {
+        const { combineSignals } = await import('../src/utils.js');
+        const c1 = new AbortController();
+        const c2 = new AbortController();
+
+        const combined = combineSignals(c1.signal, c2.signal);
+
+        expect(combined.aborted).toBe(false);
+
+        c1.abort();
+
+        expect(combined.aborted).toBe(true);
+    });
+
+    it('should abort immediately if any signal is already aborted', async () => {
+        const { combineSignals } = await import('../src/utils.js');
+        const c1 = new AbortController();
+        c1.abort();
+
+        const c2 = new AbortController();
+        const combined = combineSignals(c1.signal, c2.signal);
+
+        expect(combined.aborted).toBe(true);
+    });
+
+    it('should work with a single signal', async () => {
+        const { combineSignals } = await import('../src/utils.js');
+        const c1 = new AbortController();
+        const combined = combineSignals(c1.signal);
+
+        expect(combined.aborted).toBe(false);
+        c1.abort();
+        expect(combined.aborted).toBe(true);
+    });
+});
+
+// ─── Test: task with user signal ───────────────────────────────
+
+describe('task with user signal', () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+        globalThis.fetch = originalFetch;
+    });
+
+    it('should abort task when user signal aborts', async () => {
+        let resolveFetch!: (value: Response) => void;
+        const fetchPromise = new Promise<Response>((resolve) => {
+            resolveFetch = resolve;
+        });
+
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(
+            (input: RequestInfo | URL, init?: RequestInit) => {
+                const signal =
+                    init?.signal ?? (input instanceof Request ? input.signal : undefined);
+                if (signal?.aborted) {
+                    return Promise.reject(
+                        new DOMException('The operation was aborted.', 'AbortError')
+                    );
+                }
+                return new Promise<Response>((resolve, reject) => {
+                    signal?.addEventListener('abort', () => {
+                        reject(new DOMException('The operation was aborted.', 'AbortError'));
+                    });
+                    fetchPromise.then(resolve);
+                });
+            }
+        );
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        const userController = new AbortController();
+
+        const task = api.task.get('/api/test', { signal: userController.signal });
+
+        // Abort via user signal
+        userController.abort();
+
+        // Resolve fetch after abort
+        resolveFetch(
+            new Response(JSON.stringify({ ok: true }), {
+                status: 200,
+                statusText: 'OK',
+                headers: { 'content-type': 'application/json' },
+            })
+        );
+
+        await expect(task.wait()).rejects.toThrow();
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(1);
+    });
+});
+
+// ─── Test: mergeConfig with case-insensitive headers ───────────
+
+describe('mergeConfig header normalization', () => {
+    it('should normalize headers to lowercase', async () => {
+        const { mergeConfig } = await import('../src/utils.js');
+
+        const config = mergeConfig(
+            { baseURL: 'https://test.example.com', headers: { 'Content-Type': 'text/plain' } },
+            { method: 'POST', url: '/api/test', body: 'test' }
+        );
+
+        // Headers should be normalized to lowercase
+        expect(config.headers['content-type']).toBe('text/plain');
+        expect(config.headers['Content-Type']).toBeUndefined();
+    });
+
+    it('should remove content-type for GET requests without body', async () => {
+        const { mergeConfig } = await import('../src/utils.js');
+
+        const config = mergeConfig(
+            { baseURL: 'https://test.example.com', headers: { 'Content-Type': 'text/plain' } },
+            { method: 'GET', url: '/api/test' }
+        );
+
+        // content-type should be removed for GET
+        expect(config.headers['content-type']).toBeUndefined();
+    });
+});
