@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.6] - 2026-07-01
+
+### Fixed
+
+- **Timeout detection**: `createTimeoutController` now tracks timeout via an internal `timedOut` flag instead of inferring from `!config.signal?.aborted`. This fixes a bug where a user-provided `AbortSignal` was incorrectly treated as a timeout.
+- **SSE module**: Added `await` on `finalizeClose` to ensure close hooks complete before cleanup. Added `void` to `runClose` for unhandled Promise compliance.
+- **WebSocket module**: Added `void` to `runOpen`/`runClose`/`runSend` hook calls for unhandled Promise compliance.
+
+### Added
+
+- Test coverage for timeout detection when both `timeout` and user `signal` are provided.
+
 ## [0.0.5]
 
 ### Added

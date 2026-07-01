@@ -2085,6 +2085,78 @@ describe('afetch', () => {
 
             await expect(api.get('/api/slow', { timeout: 50 })).rejects.toThrow(AFetchError);
         }, 10000);
+
+        it('should detect timeout correctly when user signal is also provided', async () => {
+            const api = createTestInstance();
+            const userController = new AbortController();
+
+            mockFetch.mockImplementationOnce(
+                (input: RequestInfo | URL, init?: RequestInit) => {
+                    const signal =
+                        init?.signal ?? (input instanceof Request ? input.signal : undefined);
+                    return new Promise<Response>((_resolve, reject) => {
+                        signal?.addEventListener('abort', () => {
+                            reject(new DOMException('The operation was aborted.', 'AbortError'));
+                        });
+                    });
+                }
+            );
+
+            try {
+                await api.get('/api/slow', {
+                    timeout: 50,
+                    signal: userController.signal,
+                });
+                expect(true).toBe(false);
+            } catch (error) {
+                expect(error).toBeInstanceOf(AFetchError);
+                const afetchError = error as InstanceType<typeof AFetchError>;
+                // Should be TIMEOUT, not ABORT — timeout fired first
+                expect(afetchError.code).toBe(AFetchErrorType.TIMEOUT);
+                expect(afetchError.isTimeout).toBe(true);
+                expect(afetchError.isAbort).toBe(false);
+            }
+        }, 10000);
+
+        it('should detect abort when user signal aborts before timeout', async () => {
+            const api = createTestInstance();
+            const userController = new AbortController();
+
+            mockFetch.mockImplementationOnce(
+                (input: RequestInfo | URL, init?: RequestInit) => {
+                    const signal =
+                        init?.signal ?? (input instanceof Request ? input.signal : undefined);
+                    return new Promise<Response>((_resolve, reject) => {
+                        signal?.addEventListener('abort', () => {
+                            reject(new DOMException('The operation was aborted.', 'AbortError'));
+                        });
+                    });
+                }
+            );
+
+            const promise = api.get('/api/slow', {
+                timeout: 5000,
+                signal: userController.signal,
+            });
+
+            // Let microtasks settle so the request starts
+            await new Promise((r) => setTimeout(r, 10));
+
+            // Abort via user signal (well before the 5000ms timeout)
+            userController.abort();
+
+            try {
+                await promise;
+                expect(true).toBe(false);
+            } catch (error) {
+                expect(error).toBeInstanceOf(AFetchError);
+                const afetchError = error as InstanceType<typeof AFetchError>;
+                // Should be ABORT, not TIMEOUT — user aborted first
+                expect(afetchError.code).toBe(AFetchErrorType.ABORT);
+                expect(afetchError.isAbort).toBe(true);
+                expect(afetchError.isTimeout).toBe(false);
+            }
+        }, 10000);
     });
 
     describe('mergeHeaders edge cases', () => {

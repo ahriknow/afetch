@@ -152,7 +152,7 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
 
             startHeartbeat(config);
 
-            hooks.runOpen({
+            void hooks.runOpen({
                 config,
                 url: fullURL,
             });
@@ -197,7 +197,7 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
             }
 
             // Run close hooks first
-            hooks.runClose({
+            void hooks.runClose({
                 config,
                 code: event.code,
                 reason: event.reason,
@@ -317,7 +317,7 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
             ws = undefined;
         }
 
-        hooks.runClose({
+        void hooks.runClose({
             config,
             code,
             reason,
@@ -419,7 +419,7 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
         const serialized = serializeWSMessage(data);
 
         // Run send hooks
-        hooks.runSend({
+        void hooks.runSend({
             config: mergeWSConfig(defaults, config),
             data,
         });

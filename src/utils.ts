@@ -331,9 +331,10 @@ export function transformResponseData<T>(
 export function createTimeoutController(
     timeout: number,
     externalSignal?: AbortSignal
-): { controller: AbortController; cleanup: () => void } {
+): { controller: AbortController; cleanup: () => void; didTimeout: () => boolean } {
     const controller = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
 
     if (externalSignal) {
         if (externalSignal.aborted) {
@@ -351,6 +352,7 @@ export function createTimeoutController(
 
     if (timeout > 0) {
         timeoutId = setTimeout(() => {
+            timedOut = true;
             controller.abort(new Error(`Request timed out after ${timeout}ms`));
         }, timeout);
     }
@@ -362,6 +364,7 @@ export function createTimeoutController(
                 clearTimeout(timeoutId);
             }
         },
+        didTimeout: () => timedOut,
     };
 }
 

@@ -158,7 +158,10 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
         }
 
         // Create timeout controller
-        const { controller, cleanup } = createTimeoutController(config.timeout, config.signal);
+        const { controller, cleanup, didTimeout } = createTimeoutController(
+            config.timeout,
+            config.signal
+        );
 
         try {
             // Create the fetch request
@@ -258,7 +261,7 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
 
             // Handle AbortError
             if (error instanceof DOMException && error.name === 'AbortError') {
-                const isTimeout = config.timeout > 0 && !config.signal?.aborted;
+                const isTimeout = didTimeout();
                 throw new AFetchError(
                     isTimeout
                         ? `Request timed out after ${config.timeout}ms`

@@ -212,7 +212,7 @@ export function createSSE(url: string, config: SSEConfig = {}): SSEClient {
 
                 if (done) {
                     // Stream ended normally
-                    finalizeClose(mergedConfig);
+                    await finalizeClose(mergedConfig);
                     return;
                 }
 
@@ -287,7 +287,7 @@ export function createSSE(url: string, config: SSEConfig = {}): SSEClient {
         }
 
         const mergedConfig = mergeSSEConfig(defaults, config);
-        hooks.runClose({
+        void hooks.runClose({
             config: mergedConfig,
             reconnectCount,
         });
