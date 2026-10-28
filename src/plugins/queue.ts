@@ -17,6 +17,7 @@
  */
 
 import type { AFetchPlugin, AFetchPluginApi } from '../plugin.js';
+import type { ResolvedRequestConfig } from '../types.js';
 
 export interface QueueOptions {
     /** Maximum concurrent requests (default: 6) */
@@ -46,6 +47,7 @@ export function createQueuePlugin(options: QueueOptions = {}): QueuePlugin {
     const maxConcurrent = options.maxConcurrent ?? 6;
     let running = 0;
     const waiters: Waiter[] = [];
+    const activeRequests = new Set<ResolvedRequestConfig>();
 
     function acquire(): void | Promise<void> {
         if (running < maxConcurrent) {
@@ -57,7 +59,8 @@ export function createQueuePlugin(options: QueueOptions = {}): QueuePlugin {
         });
     }
 
-    function release(): void {
+    function release(config: ResolvedRequestConfig): void {
+        if (!activeRequests.delete(config)) return;
         running--;
         const next = waiters.shift();
         if (next) {
@@ -85,16 +88,17 @@ export function createQueuePlugin(options: QueueOptions = {}): QueuePlugin {
         },
 
         install(api: AFetchPluginApi): void {
-            api.addHook('beforeRequest', () => {
-                return acquire();
+            api.addHook('beforeRequest', async ({ config }) => {
+                await acquire();
+                activeRequests.add(config);
             });
 
-            api.addHook('afterResponse', () => {
-                release();
+            api.addHook('afterResponse', ({ config }) => {
+                release(config);
             });
 
-            api.addHook('onError', () => {
-                release();
+            api.addHook('onError', ({ config }) => {
+                release(config);
             });
         },
     };

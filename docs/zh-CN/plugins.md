@@ -122,6 +122,9 @@ import { createCachePlugin } from '@ahriknow/afetch';
 api.use(createCachePlugin({
     maxAge: 30_000,
     maxSize: 50,
+    // 带 Authorization/Cookie 的请求默认不缓存；
+    // 显式提供身份分区键后才会缓存，并确保不同用户的键不同
+    cacheKey: (config) => config.headers['x-tenant-id'] ?? 'public',
     // 可选：按请求决定是否缓存
     shouldCache: (config, response) => {
         if (response.status >= 400) return false;
@@ -139,6 +142,8 @@ const users2 = await api.get('/users');
 // POST 请求不会被缓存
 await api.post('/users', { name: '张三' });
 ```
+
+默认情况下，带 `Authorization` 或 `Cookie` 请求头的 GET 请求不会缓存，避免不同用户共享响应。若要缓存这类请求，请通过 `cacheKey` 返回可区分用户或租户的分区键。
 
 ## 编写自定义插件
 

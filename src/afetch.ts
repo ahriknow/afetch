@@ -94,13 +94,10 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
 
         // Run beforeRequest hooks (may return cached response)
         const cached = await hooks.runBeforeRequest(config);
-        if (cached) {
-            return cached as AResponse<T>;
-        }
 
         // Execute request
         try {
-            const response = await executeRequest<T>(config);
+            const response = cached ?? (await executeRequest<T>(config));
 
             // Run afterResponse hooks
             const finalResponse = await hooks.runAfterResponse(config, response);
@@ -158,7 +155,7 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
         }
 
         // Create timeout controller
-        const { controller, cleanup, didTimeout } = createTimeoutController(
+        const { signal, cleanup, didTimeout } = createTimeoutController(
             config.timeout,
             config.signal
         );
@@ -169,7 +166,7 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
                 method: config.method,
                 headers,
                 body: body as BodyInit | null,
-                signal: controller.signal,
+                signal,
                 cache: config.cache,
                 credentials: config.credentials,
                 redirect: config.redirect,
@@ -259,17 +256,27 @@ function createInstance(defaultConfig: AFetchConfig = {}): AFetchInstance {
                 throw error;
             }
 
-            // Handle AbortError
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                const isTimeout = didTimeout();
-                throw new AFetchError(
-                    isTimeout
+            // Handle aborts, including TimeoutError reasons from AbortSignal.timeout().
+            if (signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+                const reason = signal.reason;
+                const isTimeout =
+                    didTimeout() ||
+                    (typeof reason === 'object' &&
+                        reason !== null &&
+                        'name' in reason &&
+                        reason.name === 'TimeoutError');
+                let message = 'Request was aborted';
+                if (isTimeout) {
+                    message = didTimeout()
                         ? `Request timed out after ${config.timeout}ms`
-                        : 'Request was aborted',
+                        : getErrorMessage(reason, 'Request timed out');
+                }
+                throw new AFetchError(
+                    message,
                     isTimeout ? AFetchErrorType.TIMEOUT : AFetchErrorType.ABORT,
                     config,
                     undefined,
-                    error
+                    error instanceof Error ? error : undefined
                 );
             }
 

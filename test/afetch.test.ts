@@ -2069,6 +2069,96 @@ describe('afetch', () => {
     });
 
     describe('timeout', () => {
+        it('should classify an AbortError thrown by the fetch adapter as an abort', async () => {
+            const api = createTestInstance();
+            mockFetch.mockRejectedValueOnce(new DOMException('Request was aborted', 'AbortError'));
+
+            try {
+                await api.get('/api/abort');
+                expect(true).toBe(false);
+            } catch (error) {
+                expect(error).toBeInstanceOf(AFetchError);
+                expect((error as InstanceType<typeof AFetchError>).code).toBe(
+                    AFetchErrorType.ABORT
+                );
+            }
+        });
+
+        it('should handle non-Error rejection after signal abort', async () => {
+            const api = createTestInstance();
+            const controller = new AbortController();
+            mockFetch.mockImplementationOnce((input: RequestInfo | URL, init?: RequestInit) => {
+                const signal =
+                    init?.signal ?? (input instanceof Request ? input.signal : undefined);
+                return new Promise<Response>((_resolve, reject) => {
+                    signal?.addEventListener('abort', () => reject('cancelled'));
+                });
+            });
+
+            const request = api.get('/api/abort', { signal: controller.signal });
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            controller.abort();
+
+            try {
+                await request;
+                expect(true).toBe(false);
+            } catch (error) {
+                expect(error).toBeInstanceOf(AFetchError);
+                expect((error as InstanceType<typeof AFetchError>).code).toBe(
+                    AFetchErrorType.ABORT
+                );
+                expect((error as InstanceType<typeof AFetchError>).cause).toBeUndefined();
+            }
+        });
+
+        it('should preserve Error causes when a signal aborts', async () => {
+            const api = createTestInstance();
+            const controller = new AbortController();
+            const fetchError = new Error('cancelled');
+            mockFetch.mockImplementationOnce((input: RequestInfo | URL, init?: RequestInit) => {
+                const signal =
+                    init?.signal ?? (input instanceof Request ? input.signal : undefined);
+                return new Promise<Response>((_resolve, reject) => {
+                    signal?.addEventListener('abort', () => reject(fetchError));
+                });
+            });
+
+            const request = api.get('/api/abort', { signal: controller.signal });
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            controller.abort();
+
+            try {
+                await request;
+                expect(true).toBe(false);
+            } catch (error) {
+                expect(error).toBeInstanceOf(AFetchError);
+                expect((error as InstanceType<typeof AFetchError>).cause).toBe(fetchError);
+            }
+        });
+
+        it('should classify AbortSignal.timeout() as a timeout', async () => {
+            const api = createTestInstance();
+            mockFetch.mockImplementationOnce((input: RequestInfo | URL, init?: RequestInit) => {
+                const signal =
+                    init?.signal ?? (input instanceof Request ? input.signal : undefined);
+                return new Promise<Response>((_resolve, reject) => {
+                    signal?.addEventListener('abort', () => {
+                        reject(new DOMException('The operation was aborted.', 'AbortError'));
+                    });
+                });
+            });
+
+            try {
+                await api.get('/api/slow', { signal: AbortSignal.timeout(10) });
+                expect(true).toBe(false);
+            } catch (error) {
+                expect(error).toBeInstanceOf(AFetchError);
+                expect((error as InstanceType<typeof AFetchError>).code).toBe(
+                    AFetchErrorType.TIMEOUT
+                );
+            }
+        });
+
         it('should abort request on timeout', async () => {
             const api = createTestInstance();
             mockFetch.mockImplementationOnce(

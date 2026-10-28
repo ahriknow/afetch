@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.7] - 2026-10-28
+
+### Added
+
+- Support native `AbortSignal.any()` for signal composition, with a compatibility fallback for older runtimes.
+- Classify requests aborted by `AbortSignal.timeout()` as timeout errors (`ETIMEDOUT`).
+- Document combining cancellation signals and add test coverage for native and fallback behavior.
+- Add cache partitioning via the `cacheKey` option.
+
+### Fixed
+
+- Prevent cache hits from leaking request queue slots, regardless of plugin installation order.
+- Skip caching requests with `Authorization` or `Cookie` headers unless an explicit cache partition key is provided.
+
 ## [0.0.6] - 2026-07-01
 
 ### Fixed

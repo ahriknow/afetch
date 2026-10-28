@@ -59,6 +59,30 @@ const { data } = await api.get('/api/data', {
 controller.abort();
 ```
 
+## 组合取消信号
+
+使用 `AbortSignal.any()` 可以组合多个取消来源。例如，用户主动取消或 5 秒超时都会中止请求：
+
+```typescript
+const controller = new AbortController();
+const signal = AbortSignal.any([
+    controller.signal,
+    AbortSignal.timeout(5000),
+]);
+
+try {
+    await api.get('/api/data', { signal });
+} catch (error) {
+    if (error.code === 'ETIMEDOUT') {
+        console.log('请求超时');
+    } else if (error.code === 'EABORT') {
+        console.log('请求已取消');
+    }
+}
+```
+
+afetch 会识别 `AbortSignal.timeout()` 产生的超时原因，并将错误分类为 `ETIMEDOUT`。在不支持 `AbortSignal.any()` 的环境中，afetch 内部的信号合并仍会使用兼容实现；如果调用方直接使用该 API，则需要运行环境本身支持它。
+
 ## 超时
 
 请求支持通过 `timeout` 选项自动超时：

@@ -331,63 +331,88 @@ export function transformResponseData<T>(
 export function createTimeoutController(
     timeout: number,
     externalSignal?: AbortSignal
-): { controller: AbortController; cleanup: () => void; didTimeout: () => boolean } {
+): { signal: AbortSignal; cleanup: () => void; didTimeout: () => boolean } {
     const controller = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
 
-    if (externalSignal) {
-        if (externalSignal.aborted) {
-            controller.abort(externalSignal.reason);
-        } else {
-            externalSignal.addEventListener(
-                'abort',
-                () => {
-                    controller.abort(externalSignal.reason);
-                },
-                { once: true }
-            );
-        }
-    }
-
     if (timeout > 0) {
         timeoutId = setTimeout(() => {
             timedOut = true;
-            controller.abort(new Error(`Request timed out after ${timeout}ms`));
+            controller.abort(
+                new DOMException(`Request timed out after ${timeout}ms`, 'TimeoutError')
+            );
         }, timeout);
     }
 
+    const combined = externalSignal
+        ? combineSignalsWithCleanup([controller.signal, externalSignal])
+        : { signal: controller.signal, cleanup: () => {} };
+
     return {
-        controller,
+        signal: combined.signal,
         cleanup: () => {
             if (timeoutId !== undefined) {
                 clearTimeout(timeoutId);
             }
+            combined.cleanup();
         },
         didTimeout: () => timedOut,
     };
 }
 
+type CombinedSignals = {
+    signal: AbortSignal;
+    cleanup: () => void;
+};
+
+type SignalCombiner = (signals: AbortSignal[]) => CombinedSignals;
+
+function combineSignalsWithFallback(signals: AbortSignal[]): CombinedSignals {
+    const controller = new AbortController();
+    const listeners: Array<{ signal: AbortSignal; listener: () => void }> = [];
+    const cleanup = () => {
+        for (const { signal, listener } of listeners) {
+            signal.removeEventListener('abort', listener);
+        }
+        listeners.length = 0;
+    };
+
+    const alreadyAborted = signals.find((signal) => signal.aborted);
+    if (alreadyAborted) {
+        controller.abort(alreadyAborted.reason);
+        return { signal: controller.signal, cleanup };
+    }
+
+    for (const signal of signals) {
+        const listener = () => {
+            controller.abort(signal.reason);
+            cleanup();
+        };
+        listeners.push({ signal, listener });
+        signal.addEventListener('abort', listener, { once: true });
+    }
+
+    return { signal: controller.signal, cleanup };
+}
+
+let combineSignalsWithCleanup: SignalCombiner = (signals) => {
+    const abortSignalAny = AbortSignal.any;
+    combineSignalsWithCleanup =
+        typeof abortSignalAny === 'function'
+            ? (signals) => ({
+                  signal: abortSignalAny.call(AbortSignal, signals),
+                  cleanup: () => {},
+              })
+            : combineSignalsWithFallback;
+    return combineSignalsWithCleanup(signals);
+};
+
 /**
  * Combine multiple AbortSignals into one.
  * Aborting any of the signals will abort the combined signal.
  */
-export function combineSignals(...signals: AbortSignal[]): AbortSignal {
-    const controller = new AbortController();
-
-    for (const signal of signals) {
-        if (signal.aborted) {
-            controller.abort(signal.reason);
-            return controller.signal;
-        }
-        signal.addEventListener(
-            'abort',
-            () => {
-                controller.abort(signal.reason);
-            },
-            { once: true }
-        );
-    }
-
-    return controller.signal;
-}
+export let combineSignals: (...signals: AbortSignal[]) => AbortSignal = (...signals) => {
+    combineSignals = (...signals) => combineSignalsWithCleanup(signals).signal;
+    return combineSignalsWithCleanup(signals).signal;
+};

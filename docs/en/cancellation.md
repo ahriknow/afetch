@@ -59,6 +59,30 @@ const { data } = await api.get('/api/data', {
 controller.abort();
 ```
 
+## Combining Abort Signals
+
+Use `AbortSignal.any()` to combine cancellation sources. For example, either a user cancellation or a 5-second timeout will abort the request:
+
+```typescript
+const controller = new AbortController();
+const signal = AbortSignal.any([
+    controller.signal,
+    AbortSignal.timeout(5000),
+]);
+
+try {
+    await api.get('/api/data', { signal });
+} catch (error) {
+    if (error.code === 'ETIMEDOUT') {
+        console.log('Request timed out');
+    } else if (error.code === 'EABORT') {
+        console.log('Request was cancelled');
+    }
+}
+```
+
+afetch recognizes timeout reasons from `AbortSignal.timeout()` and classifies them as `ETIMEDOUT`. Internally, signal composition falls back to a compatibility implementation when `AbortSignal.any()` is unavailable. Calling `AbortSignal.any()` directly still requires runtime support.
+
 ## Timeout
 
 Requests support automatic timeout via the `timeout` option:

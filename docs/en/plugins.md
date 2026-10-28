@@ -120,6 +120,9 @@ import { createCachePlugin } from '@ahriknow/afetch';
 api.use(createCachePlugin({
     maxAge: 30_000,
     maxSize: 50,
+    // Requests with Authorization/Cookie are skipped unless a partition key is provided.
+    // Ensure this key differs between users or tenants.
+    cacheKey: (config) => config.headers['x-tenant-id'] ?? 'public',
     // Optional: per-request cache decision
     shouldCache: (config, response) => {
         if (response.status >= 400) return false;
@@ -137,6 +140,8 @@ const users2 = await api.get('/users');
 // POST requests are never cached
 await api.post('/users', { name: 'John' });
 ```
+
+GET requests with `Authorization` or `Cookie` headers are not cached by default, preventing responses from being shared across users. To cache them, provide `cacheKey` with a partition key that distinguishes users or tenants.
 
 ## Writing Custom Plugins
 

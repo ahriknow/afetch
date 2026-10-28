@@ -1338,6 +1338,41 @@ describe('createQueuePlugin', () => {
         const response = await api.get('/test');
         expect(response.status).toBe(200);
     });
+
+    it('should release queue slots for cached responses regardless of plugin order', async () => {
+        const { createQueuePlugin } = await import('../src/plugins/queue.js');
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() =>
+            Promise.resolve(
+                new Response(JSON.stringify({ ok: true }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                })
+            )
+        );
+        globalThis.fetch = mockGlobalFetch;
+
+        const queueFirstApi = createInstance({ baseURL: 'https://test.example.com' });
+        const queueFirst = createQueuePlugin({ maxConcurrent: 1 });
+        queueFirstApi.use(queueFirst);
+        queueFirstApi.use(createCachePlugin());
+
+        await queueFirstApi.get('/cached');
+        await queueFirstApi.get('/cached');
+        expect(queueFirst.pending).toBe(0);
+        expect(queueFirst.queued).toBe(0);
+
+        const cacheFirstApi = createInstance({ baseURL: 'https://test.example.com' });
+        cacheFirstApi.use(createCachePlugin());
+        const cacheFirst = createQueuePlugin({ maxConcurrent: 1 });
+        cacheFirstApi.use(cacheFirst);
+
+        await cacheFirstApi.get('/cached');
+        await cacheFirstApi.get('/cached');
+        expect(cacheFirst.pending).toBe(0);
+        expect(cacheFirst.queued).toBe(0);
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(2);
+    });
 });
 
 // ─── Test: ResponseCache ───────────────────────────────────────
@@ -1603,6 +1638,64 @@ describe('createCachePlugin', () => {
         expect(mockGlobalFetch).toHaveBeenCalledTimes(2);
     });
 
+    it('should not cache credentialed requests by default', async () => {
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation(() =>
+            Promise.resolve(
+                new Response(JSON.stringify({ ok: true }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                })
+            )
+        );
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        api.use(createCachePlugin());
+
+        await api.get('/private', { headers: { Authorization: 'Bearer user-a' } });
+        await api.get('/private', { headers: { Authorization: 'Bearer user-b' } });
+        await api.get('/private', { headers: { Cookie: 'session=user-a' } });
+        await api.get('/private', { headers: { Cookie: 'session=user-b' } });
+
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(4);
+    });
+
+    it('should partition credentialed cache entries with cacheKey', async () => {
+        const { createCachePlugin } = await import('../src/plugins/cache.js');
+        const mockGlobalFetch = jest.fn<typeof fetch>().mockImplementation((request) =>
+            Promise.resolve(
+                new Response(JSON.stringify({ authorization: new Request(request).headers.get('authorization') }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                })
+            )
+        );
+        globalThis.fetch = mockGlobalFetch;
+
+        const api = createInstance({ baseURL: 'https://test.example.com' });
+        api.use(
+            createCachePlugin({
+                cacheKey: (config) => config.headers.authorization ?? 'anonymous',
+            })
+        );
+
+        const userA = await api.get('/private', {
+            headers: { Authorization: 'Bearer user-a' },
+        });
+        const userB = await api.get('/private', {
+            headers: { Authorization: 'Bearer user-b' },
+        });
+        const userAAgain = await api.get('/private', {
+            headers: { Authorization: 'Bearer user-a' },
+        });
+
+        expect(userA.data).toEqual({ authorization: 'Bearer user-a' });
+        expect(userB.data).toEqual({ authorization: 'Bearer user-b' });
+        expect(userAAgain.data).toEqual({ authorization: 'Bearer user-a' });
+        expect(mockGlobalFetch).toHaveBeenCalledTimes(2);
+    });
+
     it('should install with default options', async () => {
         const { createCachePlugin } = await import('../src/plugins/cache.js');
         const plugin = createCachePlugin();
@@ -1845,6 +1938,48 @@ describe('transformData direct', () => {
 // ─── Test: combineSignals ──────────────────────────────────────
 
 describe('combineSignals', () => {
+    it('should use the fallback when AbortSignal.any is unavailable', async () => {
+        const originalDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
+        Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined });
+
+        try {
+            await jest.isolateModulesAsync(async () => {
+                const utils = await import('../src/utils.js');
+                const initialCombiner = utils.combineSignals;
+                const first = new AbortController();
+                const second = new AbortController();
+                const combined = initialCombiner(first.signal, second.signal);
+
+                first.abort('cancelled');
+
+                expect(combined.aborted).toBe(true);
+                expect(combined.reason).toBe('cancelled');
+                expect(utils.combineSignals).not.toBe(initialCombiner);
+
+                const alreadyAborted = new AbortController();
+                alreadyAborted.abort('already cancelled');
+                const fallbackCombiner = utils.combineSignals;
+                const immediate = utils.combineSignals(alreadyAborted.signal);
+
+                expect(immediate.aborted).toBe(true);
+                expect(immediate.reason).toBe('already cancelled');
+                expect(utils.combineSignals).toBe(fallbackCombiner);
+
+                const timeoutController = utils.createTimeoutController(
+                    0,
+                    alreadyAborted.signal
+                );
+                timeoutController.cleanup();
+            });
+        } finally {
+            if (originalDescriptor) {
+                Object.defineProperty(AbortSignal, 'any', originalDescriptor);
+            } else {
+                Reflect.deleteProperty(AbortSignal, 'any');
+            }
+        }
+    });
+
     it('should abort when any signal aborts', async () => {
         const { combineSignals } = await import('../src/utils.js');
         const c1 = new AbortController();
