@@ -3,6 +3,15 @@
  * Type definitions for the WebSocket module
  */
 
+import type {
+    WSCloseHook,
+    WSErrorHook,
+    WSMessageHook,
+    WSOpenHook,
+    WSSendHook,
+    WSPlugin,
+} from './plugin.js';
+
 // ─── State ────────────────────────────────────────────────────
 
 export enum WSState {
@@ -64,6 +73,18 @@ export interface WSConfig {
     webSocketImpl?: any;
     /** Plugins to install at creation */
     plugins?: WSPlugin[];
+
+    /** Called after all plugins when the connection opens */
+    onOpen?: WSOpenHook;
+    /** Called after all plugins for each received message */
+    onMessage?: WSMessageHook;
+    /** Called after all plugins when a WebSocket error occurs */
+    onError?: WSErrorHook;
+    /** Called after all plugins when the connection closes */
+    onClose?: WSCloseHook;
+    /** Called after all plugins when sending data */
+    onSend?: WSSendHook;
+
     /** Arbitrary metadata for plugins */
     meta?: Record<string, unknown>;
     /** Connection timeout in ms */
@@ -97,10 +118,17 @@ export interface WSClient {
     /** Install a plugin */
     use(plugin: WSPlugin): void;
 
+    /** Callback invoked after plugin hooks when the connection opens */
+    onOpen: WSOpenHook | undefined;
+    /** Callback invoked after plugin hooks for each received message */
+    onMessage: WSMessageHook | undefined;
+    /** Callback invoked after plugin hooks when a WebSocket error occurs */
+    onError: WSErrorHook | undefined;
+    /** Callback invoked after plugin hooks when the connection closes */
+    onClose: WSCloseHook | undefined;
+    /** Callback invoked after plugin hooks when sending data */
+    onSend: WSSendHook | undefined;
+
     /** @internal Test-only: expose tryReconnect for branch coverage */
     _tryReconnect?: (config?: WSConfig) => void;
 }
-
-// ─── Re-exports for plugin ────────────────────────────────────
-
-import type { WSPlugin } from './plugin.js';

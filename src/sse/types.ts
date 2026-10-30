@@ -3,7 +3,13 @@
  * Type definitions for the sse (Server-Sent Events) module
  */
 
-import type { SSEPlugin } from './plugin.js';
+import type {
+    SSECloseHook,
+    SSEConnectHook,
+    SSEErrorHook,
+    SSEMessageHook,
+    SSEPlugin,
+} from './plugin.js';
 
 /** SSE connection configuration */
 export interface SSEConfig {
@@ -30,6 +36,18 @@ export interface SSEConfig {
 
     /** Plugins to install */
     plugins?: SSEPlugin[];
+
+    /** Called after all plugins when a connection opens */
+    onConnect?: SSEConnectHook;
+
+    /** Called after all plugins for each received event */
+    onMessage?: SSEMessageHook;
+
+    /** Called after all plugins when a connection error occurs */
+    onError?: SSEErrorHook;
+
+    /** Called after all plugins when the connection closes */
+    onClose?: SSECloseHook;
 
     /** Custom metadata (for plugins) */
     meta?: Record<string, unknown>;
@@ -76,6 +94,18 @@ export interface SSEClient {
 
     /** Install a plugin */
     use(plugin: SSEPlugin): void;
+
+    /** Callback invoked after plugin hooks when a connection opens */
+    onConnect: SSEConnectHook | undefined;
+
+    /** Callback invoked after plugin hooks for each received event */
+    onMessage: SSEMessageHook | undefined;
+
+    /** Callback invoked after plugin hooks when a connection error occurs */
+    onError: SSEErrorHook | undefined;
+
+    /** Callback invoked after plugin hooks when the connection closes */
+    onClose: SSECloseHook | undefined;
 
     /** Default configuration (read-only reference) */
     readonly defaults: SSEConfig;

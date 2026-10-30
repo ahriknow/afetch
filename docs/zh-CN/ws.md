@@ -13,22 +13,11 @@ import { createWS } from '@ahriknow/afetch/ws';
 ```typescript
 import { createWS } from '@ahriknow/afetch/ws';
 
-const ws = createWS('wss://api.example.com/ws');
-
-// 监听消息
-ws.use({
-    name: 'logger',
-    install(api) {
-        api.addHook('open', ({ url }) => {
-            console.log(`已连接到 ${url}`);
-        });
-        api.addHook('message', ({ message }) => {
-            console.log('收到:', message.data);
-        });
-        api.addHook('close', ({ code, reason }) => {
-            console.log(`已关闭: ${code} ${reason}`);
-        });
-    },
+const ws = createWS('wss://api.example.com/ws', {
+    onOpen: ({ url }) => console.log('已连接到:', url),
+    onMessage: ({ message }) => console.log('收到:', message.data),
+    onError: ({ error }) => console.error('WebSocket 错误:', error.message),
+    onClose: ({ code, reason }) => console.log(`已关闭: ${code} ${reason}`),
 });
 
 ws.connect();
@@ -36,6 +25,9 @@ ws.connect();
 // 发送消息
 ws.send({ type: 'ping' });
 ws.send('你好服务器');
+
+// 创建后也可以设置或替换回调；回调总是在所有插件钩子执行后调用
+ws.onMessage = ({ message }) => console.log('新消息:', message.data);
 ```
 
 ## 配置
@@ -77,7 +69,14 @@ const ws = createWS('/ws', {
 | `binaryType` | `BinaryType` | `'blob'` | WebSocket 的二进制类型（`'blob'` 或 `'arraybuffer'`） |
 | `webSocketImpl` | `typeof WebSocket` | `globalThis.WebSocket` | 自定义 WebSocket 实现（用于测试/模拟） |
 | `plugins` | `WSPlugin[]` | — | 创建时安装的插件 |
+| `onOpen` | `WSOpenHook` | — | 所有插件的 open 钩子执行后调用 |
+| `onMessage` | `WSMessageHook` | — | 所有插件的 message 钩子执行后调用 |
+| `onError` | `WSErrorHook` | — | 所有插件的 error 钩子执行后调用；返回 `false` 可阻止重连 |
+| `onClose` | `WSCloseHook` | — | 所有插件的 close 钩子执行后调用 |
+| `onSend` | `WSSendHook` | — | 所有插件的 send 钩子执行后调用 |
 | `meta` | `Record<string, unknown>` | — | 插件的任意元数据 |
+
+创建后也可直接给 `ws.onOpen`、`ws.onMessage`、`ws.onError`、`ws.onClose` 或 `ws.onSend` 赋值/清空回调。
 
 ## 客户端 API
 

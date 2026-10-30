@@ -13,22 +13,11 @@ import { createWS } from '@ahriknow/afetch/ws';
 ```typescript
 import { createWS } from '@ahriknow/afetch/ws';
 
-const ws = createWS('wss://api.example.com/ws');
-
-// Listen for messages
-ws.use({
-    name: 'logger',
-    install(api) {
-        api.addHook('open', ({ url }) => {
-            console.log(`Connected to ${url}`);
-        });
-        api.addHook('message', ({ message }) => {
-            console.log('Received:', message.data);
-        });
-        api.addHook('close', ({ code, reason }) => {
-            console.log(`Closed: ${code} ${reason}`);
-        });
-    },
+const ws = createWS('wss://api.example.com/ws', {
+    onOpen: ({ url }) => console.log('Connected to:', url),
+    onMessage: ({ message }) => console.log('Received:', message.data),
+    onError: ({ error }) => console.error('WebSocket error:', error.message),
+    onClose: ({ code, reason }) => console.log(`Closed: ${code} ${reason}`),
 });
 
 ws.connect();
@@ -36,6 +25,10 @@ ws.connect();
 // Send messages
 ws.send({ type: 'ping' });
 ws.send('Hello server');
+
+// Callbacks can also be assigned or replaced after creation.
+// They always run after all plugin hooks.
+ws.onMessage = ({ message }) => console.log('New message:', message.data);
 ```
 
 ## Configuration
@@ -77,7 +70,14 @@ const ws = createWS('/ws', {
 | `binaryType` | `BinaryType` | `'blob'` | Binary type for the WebSocket (`'blob'` or `'arraybuffer'`) |
 | `webSocketImpl` | `typeof WebSocket` | `globalThis.WebSocket` | Custom WebSocket implementation (for testing/mocking) |
 | `plugins` | `WSPlugin[]` | — | Plugins to install at creation |
+| `onOpen` | `WSOpenHook` | — | Called after all open plugin hooks |
+| `onMessage` | `WSMessageHook` | — | Called after all message plugin hooks |
+| `onError` | `WSErrorHook` | — | Called after all error plugin hooks; return `false` to prevent reconnect |
+| `onClose` | `WSCloseHook` | — | Called after all close plugin hooks |
+| `onSend` | `WSSendHook` | — | Called after all send plugin hooks |
 | `meta` | `Record<string, unknown>` | — | Arbitrary metadata for plugins |
+
+Callbacks can also be assigned or cleared later through `ws.onOpen`, `ws.onMessage`, `ws.onError`, `ws.onClose`, and `ws.onSend`.
 
 ## Client API
 

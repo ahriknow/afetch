@@ -112,13 +112,14 @@ export class WSHookRunner {
      * Run error hooks. Returns true if any hook wants to prevent reconnection.
      */
     async runError(ctx: WSErrorContext): Promise<boolean> {
+        let preventReconnect = false;
         for (const hook of this.errorHooks) {
             const result = await hook(ctx);
             if (result === false) {
-                return true; // prevent reconnect
+                preventReconnect = true;
             }
         }
-        return false;
+        return preventReconnect;
     }
 
     async runClose(ctx: WSCloseContext): Promise<void> {

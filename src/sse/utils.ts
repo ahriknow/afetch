@@ -100,6 +100,10 @@ export function mergeSSEConfig(defaults: SSEConfig, options: SSEConfig): SSEConf
             resolveValue(defaults.reconnectDelay, DEFAULT_SSE_CONFIG.reconnectDelay)
         ),
         fetchAdapter: resolveValue(options.fetchAdapter, defaults.fetchAdapter),
+        onConnect: resolveValue(options.onConnect, defaults.onConnect),
+        onMessage: resolveValue(options.onMessage, defaults.onMessage),
+        onError: resolveValue(options.onError, defaults.onError),
+        onClose: resolveValue(options.onClose, defaults.onClose),
         plugins: options.plugins,
         meta: { ...defaults.meta, ...options.meta },
     };

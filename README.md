@@ -74,6 +74,56 @@ const { data: users } = await api.get<User[]>('/users');
 const { data: user } = await api.post<User>('/users', { name: 'John' });
 ```
 
+## Server-Sent Events (SSE)
+
+Import the SSE client from the separate `@ahriknow/afetch/sse` subpath. Once connected, it receives events pushed by the server. Configure `onConnect`, `onMessage`, `onError`, and `onClose` callbacks when creating the client, or assign them later; callbacks run after all plugin hooks.
+
+```typescript
+import { createSSE } from '@ahriknow/afetch/sse';
+
+const events = createSSE('https://api.example.com/events', {
+    onMessage: ({ event }) => {
+        console.log(`[${event.event}]`, event.data);
+    },
+    onError: ({ error, attempt }) => {
+        console.error(`SSE error (attempt ${attempt + 1}):`, error.message);
+    },
+});
+
+events.connect();
+
+// Callbacks can also be assigned or replaced after creation.
+// They run after plugin hooks.
+events.onMessage = ({ event }) => console.log('New message:', event.data);
+
+// Close the connection and stop auto-reconnecting when the page/component is disposed.
+// events.close();
+```
+
+## WebSocket
+
+Import the WebSocket client from `@ahriknow/afetch/ws`. Configure `onOpen`, `onMessage`, `onError`, `onClose`, and `onSend` callbacks when creating the client, or assign them later; callbacks run after all plugin hooks. Send messages after the connection opens and listen for server messages:
+
+```typescript
+import { createWS } from '@ahriknow/afetch/ws';
+
+const socket = createWS('wss://api.example.com/ws', {
+    autoParse: true,
+    autoReconnect: true,
+    onMessage: ({ message }) => console.log('Received:', message.data),
+    onError: ({ error }) => console.error('WebSocket error:', error.message),
+});
+
+socket.onOpen = () => socket.send({ type: 'subscribe', channel: 'updates' });
+socket.connect();
+
+// You can also send messages once the connection is open.
+// socket.send({ type: 'ping' });
+
+// Close the connection when it is no longer needed.
+// socket.close();
+```
+
 ## Built-in Plugins
 
 ### Retry Plugin

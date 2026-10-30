@@ -93,13 +93,14 @@ export class SSEHookRunner {
      * Run error hooks. Returns true if any hook wants to prevent reconnection.
      */
     async runError(ctx: SSEErrorContext): Promise<boolean> {
+        let preventReconnect = false;
         for (const hook of this.errorHooks) {
             const result = await hook(ctx);
             if (result === false) {
-                return true; // prevent reconnect
+                preventReconnect = true;
             }
         }
-        return false;
+        return preventReconnect;
     }
 
     async runClose(ctx: SSECloseContext): Promise<void> {

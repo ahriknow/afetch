@@ -27,6 +27,12 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
     const hooks = new WSHookRunner();
     const installedPlugins = new Set<string>();
 
+    let onOpen = config.onOpen;
+    let onMessage = config.onMessage;
+    let onError = config.onError;
+    let onClose = config.onClose;
+    let onSend = config.onSend;
+
     let state: WSState = WSState.CLOSED;
     let fullURL = '';
     let reconnectCount = 0;
@@ -119,6 +125,34 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
         }, interval);
     }
 
+    async function runOpenCallbacks(
+        context: Parameters<WSHookRunner['runOpen']>[0]
+    ): Promise<void> {
+        await hooks.runOpen(context);
+        await onOpen?.(context);
+    }
+
+    async function runMessageCallbacks(
+        context: Parameters<WSHookRunner['runMessage']>[0]
+    ): Promise<void> {
+        await hooks.runMessage(context);
+        await onMessage?.(context);
+    }
+
+    async function runCloseCallbacks(
+        context: Parameters<WSHookRunner['runClose']>[0]
+    ): Promise<void> {
+        await hooks.runClose(context);
+        await onClose?.(context);
+    }
+
+    async function runSendCallbacks(
+        context: Parameters<WSHookRunner['runSend']>[0]
+    ): Promise<void> {
+        await hooks.runSend(context);
+        await onSend?.(context);
+    }
+
     /**
      * Start connection timeout
      */
@@ -152,7 +186,7 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
 
             startHeartbeat(config);
 
-            void hooks.runOpen({
+            void runOpenCallbacks({
                 config,
                 url: fullURL,
             });
@@ -171,7 +205,7 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
                 timestamp: Date.now(),
             };
 
-            hooks.runMessage({
+            void runMessageCallbacks({
                 config,
                 message,
             });
@@ -196,14 +230,13 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
                 return;
             }
 
-            // Run close hooks first
-            void hooks.runClose({
+            const closeContext = {
                 config,
                 code: event.code,
                 reason: event.reason,
                 reconnectCount,
                 wasClean: event.wasClean,
-            });
+            };
 
             // Determine if we should reconnect
             const shouldReconnect =
@@ -213,7 +246,10 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
                 const maxAttempts =
                     config.maxReconnectAttempts ?? DEFAULT_WS_CONFIG.maxReconnectAttempts;
                 if (currentAttempt < maxAttempts) {
-                    void scheduleReconnect(config);
+                    void (async () => {
+                        await runCloseCallbacks(closeContext);
+                        await scheduleReconnect(config);
+                    })();
                 } else {
                     finalizeClose(config, event.code, event.reason, event.wasClean);
                 }
@@ -243,13 +279,15 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
 
         const mergedConfig = mergeWSConfig(defaults, config);
 
-        const preventReconnect = await hooks.runError({
+        const errorContext = {
             config: mergedConfig,
             error,
             attempt: currentAttempt,
-        });
+        };
+        const preventReconnectByPlugin = await hooks.runError(errorContext);
+        const preventReconnectByCallback = (await onError?.(errorContext)) === false;
 
-        if (preventReconnect) {
+        if (preventReconnectByPlugin || preventReconnectByCallback) {
             state = WSState.CLOSED;
             finalizeClose(mergedConfig, 1006, error.message, false);
             return;
@@ -317,7 +355,7 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
             ws = undefined;
         }
 
-        void hooks.runClose({
+        void runCloseCallbacks({
             config,
             code,
             reason,
@@ -419,7 +457,7 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
         const serialized = serializeWSMessage(data);
 
         // Run send hooks
-        void hooks.runSend({
+        void runSendCallbacks({
             config: mergeWSConfig(defaults, config),
             data,
         });
@@ -445,6 +483,36 @@ export function createWS(url: string, config: WSConfig = {}): WSClient {
         close,
         send,
         use,
+        get onOpen() {
+            return onOpen;
+        },
+        set onOpen(callback) {
+            onOpen = callback;
+        },
+        get onMessage() {
+            return onMessage;
+        },
+        set onMessage(callback) {
+            onMessage = callback;
+        },
+        get onError() {
+            return onError;
+        },
+        set onError(callback) {
+            onError = callback;
+        },
+        get onClose() {
+            return onClose;
+        },
+        set onClose(callback) {
+            onClose = callback;
+        },
+        get onSend() {
+            return onSend;
+        },
+        set onSend(callback) {
+            onSend = callback;
+        },
 
         // Test-only: expose tryReconnect for branch coverage
         _tryReconnect: (cfg?: WSConfig) => tryReconnect(cfg || mergeWSConfig(defaults, config)),

@@ -13,19 +13,19 @@ import { createSSE } from '@ahriknow/afetch/sse';
 ```typescript
 import { createSSE } from '@ahriknow/afetch/sse';
 
-const sse = createSSE('https://api.example.com/events');
-
-// 监听消息
-sse.use({
-    name: 'logger',
-    install(api) {
-        api.addHook('message', ({ event }) => {
-            console.log(`[${event.event || 'message'}]`, event.data);
-        });
+const sse = createSSE('https://api.example.com/events', {
+    onConnect: ({ url }) => console.log('已连接:', url),
+    onMessage: ({ event }) => console.log(`[${event.event}]`, event.data),
+    onError: ({ error, attempt }) => {
+        console.error(`连接错误（第 ${attempt + 1} 次尝试）:`, error.message);
     },
+    onClose: ({ reconnectCount }) => console.log('连接已关闭，重连次数:', reconnectCount),
 });
 
 sse.connect();
+
+// 也可以在创建后设置或替换回调；回调总是在所有插件钩子执行后调用
+sse.onMessage = ({ event }) => console.log('新消息:', event.data);
 ```
 
 ## 配置
@@ -58,7 +58,13 @@ const sse = createSSE('/events', {
 | `reconnectDelay` | `number \| (attempt: number) => number` | `3000` | 重连间隔（毫秒），可以是固定数值或函数 |
 | `fetchAdapter` | `typeof fetch` | `globalThis.fetch` | 自定义 fetch 实现 |
 | `plugins` | `SSEPlugin[]` | — | 创建时安装的插件列表 |
+| `onConnect` | `SSEConnectHook` | — | 所有插件的 connect 钩子执行后调用 |
+| `onMessage` | `SSEMessageHook` | — | 所有插件的 message 钩子执行后调用 |
+| `onError` | `SSEErrorHook` | — | 所有插件的 error 钩子执行后调用；返回 `false` 可阻止重连 |
+| `onClose` | `SSECloseHook` | — | 所有插件的 close 钩子执行后调用 |
 | `meta` | `Record<string, unknown>` | — | 供插件使用的自定义元数据 |
+
+创建后也可直接给 `sse.onConnect`、`sse.onMessage`、`sse.onError` 或 `sse.onClose` 赋值/清空回调。
 
 ## 客户端 API
 

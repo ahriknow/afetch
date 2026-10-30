@@ -13,19 +13,20 @@ import { createSSE } from '@ahriknow/afetch/sse';
 ```typescript
 import { createSSE } from '@ahriknow/afetch/sse';
 
-const sse = createSSE('https://api.example.com/events');
-
-// Listen for messages
-sse.use({
-    name: 'logger',
-    install(api) {
-        api.addHook('message', ({ event }) => {
-            console.log(`[${event.event || 'message'}]`, event.data);
-        });
+const sse = createSSE('https://api.example.com/events', {
+    onConnect: ({ url }) => console.log('Connected:', url),
+    onMessage: ({ event }) => console.log(`[${event.event}]`, event.data),
+    onError: ({ error, attempt }) => {
+        console.error(`Connection error (attempt ${attempt + 1}):`, error.message);
     },
+    onClose: ({ reconnectCount }) => console.log('Connection closed; reconnects:', reconnectCount),
 });
 
 sse.connect();
+
+// Callbacks can also be assigned or replaced after creation.
+// They always run after all plugin hooks.
+sse.onMessage = ({ event }) => console.log('New message:', event.data);
 ```
 
 ## Configuration
@@ -58,7 +59,13 @@ const sse = createSSE('/events', {
 | `reconnectDelay` | `number \| (attempt: number) => number` | `3000` | Delay between reconnects (ms), can be a static number or function |
 | `fetchAdapter` | `typeof fetch` | `globalThis.fetch` | Custom fetch implementation |
 | `plugins` | `SSEPlugin[]` | — | Plugins to install at creation |
+| `onConnect` | `SSEConnectHook` | — | Called after all connect plugin hooks |
+| `onMessage` | `SSEMessageHook` | — | Called after all message plugin hooks |
+| `onError` | `SSEErrorHook` | — | Called after all error plugin hooks; return `false` to prevent reconnect |
+| `onClose` | `SSECloseHook` | — | Called after all close plugin hooks |
 | `meta` | `Record<string, unknown>` | — | Arbitrary metadata for plugins |
+
+Callbacks can also be assigned or cleared later through `sse.onConnect`, `sse.onMessage`, `sse.onError`, and `sse.onClose`.
 
 ## Client API
 

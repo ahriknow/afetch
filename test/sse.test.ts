@@ -79,6 +79,42 @@ describe('sse - createSSE', () => {
         expect(sse.url).toBe('');
     });
 
+    it('should expose configurable callbacks that can be replaced and cleared', () => {
+        const configured = () => {};
+        const assigned = () => {};
+        const sse = createSSE('/events', {
+            onConnect: configured,
+            onMessage: configured,
+            onError: configured,
+            onClose: configured,
+        });
+
+        expect(sse.onConnect).toBe(configured);
+        expect(sse.onMessage).toBe(configured);
+        expect(sse.onError).toBe(configured);
+        expect(sse.onClose).toBe(configured);
+
+        sse.onConnect = assigned;
+        sse.onMessage = assigned;
+        sse.onError = assigned;
+        sse.onClose = assigned;
+
+        expect(sse.onConnect).toBe(assigned);
+        expect(sse.onMessage).toBe(assigned);
+        expect(sse.onError).toBe(assigned);
+        expect(sse.onClose).toBe(assigned);
+
+        sse.onConnect = undefined;
+        sse.onMessage = undefined;
+        sse.onError = undefined;
+        sse.onClose = undefined;
+
+        expect(sse.onConnect).toBeUndefined();
+        expect(sse.onMessage).toBeUndefined();
+        expect(sse.onError).toBeUndefined();
+        expect(sse.onClose).toBeUndefined();
+    });
+
     it('should build URL from baseURL and url', async () => {
         const sse = createSSE('/events', {
             baseURL: 'https://api.example.com',
@@ -158,6 +194,88 @@ describe('sse - createSSE', () => {
         expect(messages[1]).toEqual({ event: 'custom', data: 'world' });
         expect(messages[2]).toEqual({ event: 'message', data: 'multi\nline' });
         sse.close();
+    });
+
+    it('should run config and assigned callbacks after all plugin hooks', async () => {
+        globalThis.fetch = mockSSEFetch(['data: hello\n\n']);
+
+        const order: string[] = [];
+        const sse = createSSE('/events', {
+            autoReconnect: false,
+            onConnect: () => order.push('config-connect'),
+            onMessage: () => order.push('config-message'),
+            plugins: [
+                {
+                    name: 'first',
+                    install(api) {
+                        api.addHook('connect', () => order.push('plugin-connect'));
+                        api.addHook('message', () => order.push('plugin-message'));
+                        api.addHook('close', () => order.push('plugin-close'));
+                    },
+                },
+                {
+                    name: 'second',
+                    install(api) {
+                        api.addHook('message', () => order.push('second-plugin-message'));
+                    },
+                },
+            ],
+        });
+        sse.onClose = () => order.push('assigned-close');
+
+        sse.connect();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        expect(order).toEqual([
+            'plugin-connect',
+            'config-connect',
+            'plugin-message',
+            'second-plugin-message',
+            'config-message',
+            'plugin-close',
+            'assigned-close',
+        ]);
+    });
+
+    it('should call the error callback after every plugin and allow it to stop reconnecting', async () => {
+        globalThis.fetch = jest.fn<typeof fetch>().mockRejectedValue(new Error('connection failed'));
+
+        const order: string[] = [];
+        const sse = createSSE('/events', {
+            reconnectDelay: 1,
+            maxReconnectAttempts: 2,
+            onError: () => {
+                order.push('callback-error');
+                return false;
+            },
+            plugins: [
+                {
+                    name: 'stop-reconnect',
+                    install(api) {
+                        api.addHook('error', () => {
+                            order.push('first-plugin-error');
+                            return false;
+                        });
+                    },
+                },
+                {
+                    name: 'observe-error',
+                    install(api) {
+                        api.addHook('error', () => order.push('second-plugin-error'));
+                    },
+                },
+            ],
+        });
+
+        sse.connect();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(order).toEqual([
+            'first-plugin-error',
+            'second-plugin-error',
+            'callback-error',
+        ]);
+        expect(sse.state).toBe(SSEState.CLOSED);
     });
 
     it('should handle event id field', async () => {

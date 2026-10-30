@@ -25,6 +25,11 @@ export function createSSE(url: string, config: SSEConfig = {}): SSEClient {
     const hooks = new SSEHookRunner();
     const installedPlugins = new Set<string>();
 
+    let onConnect = config.onConnect;
+    let onMessage = config.onMessage;
+    let onError = config.onError;
+    let onClose = config.onClose;
+
     let state: SSEState = SSEState.CLOSED;
     let fullURL = '';
     let reconnectCount = 0;
@@ -95,13 +100,15 @@ export function createSSE(url: string, config: SSEConfig = {}): SSEClient {
                       error instanceof Error ? error : undefined
                   );
 
-        const preventReconnect = await hooks.runError({
+        const context = {
             config: mergedConfig,
             error: sseError,
             attempt,
-        });
+        };
+        const preventReconnect = await hooks.runError(context);
+        const callbackResult = await onError?.(context);
 
-        return !preventReconnect;
+        return !preventReconnect && callbackResult !== false;
     }
 
     /**
@@ -134,10 +141,12 @@ export function createSSE(url: string, config: SSEConfig = {}): SSEClient {
     async function finalizeClose(mergedConfig: SSEConfig): Promise<void> {
         state = SSEState.CLOSED;
         cleanup();
-        await hooks.runClose({
+        const context = {
             config: mergedConfig,
             reconnectCount,
-        });
+        };
+        await hooks.runClose(context);
+        await onClose?.(context);
     }
 
     /**
@@ -197,10 +206,12 @@ export function createSSE(url: string, config: SSEConfig = {}): SSEClient {
             reconnectCount = attempt;
 
             // Run connect hooks
-            await hooks.runConnect({
+            const context = {
                 config: mergedConfig,
                 url: fullURL,
-            });
+            };
+            await hooks.runConnect(context);
+            await onConnect?.(context);
 
             // Read the stream
             reader = response.body.getReader();
@@ -223,10 +234,12 @@ export function createSSE(url: string, config: SSEConfig = {}): SSEClient {
                 buffer = remaining;
 
                 for (const event of events) {
-                    await hooks.runMessage({
+                    const context = {
                         config: mergedConfig,
                         event,
-                    });
+                    };
+                    await hooks.runMessage(context);
+                    await onMessage?.(context);
 
                     // Update retry interval from event if specified
                     if (
@@ -287,10 +300,14 @@ export function createSSE(url: string, config: SSEConfig = {}): SSEClient {
         }
 
         const mergedConfig = mergeSSEConfig(defaults, config);
-        void hooks.runClose({
+        const context = {
             config: mergedConfig,
             reconnectCount,
-        });
+        };
+        void (async () => {
+            await hooks.runClose(context);
+            await onClose?.(context);
+        })();
     }
 
     return {
@@ -306,6 +323,30 @@ export function createSSE(url: string, config: SSEConfig = {}): SSEClient {
         connect,
         close,
         use,
+        get onConnect() {
+            return onConnect;
+        },
+        set onConnect(callback) {
+            onConnect = callback;
+        },
+        get onMessage() {
+            return onMessage;
+        },
+        set onMessage(callback) {
+            onMessage = callback;
+        },
+        get onError() {
+            return onError;
+        },
+        set onError(callback) {
+            onError = callback;
+        },
+        get onClose() {
+            return onClose;
+        },
+        set onClose(callback) {
+            onClose = callback;
+        },
         defaults,
     };
 }

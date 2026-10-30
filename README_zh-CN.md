@@ -74,6 +74,55 @@ const { data: users } = await api.get<User[]>('/users');
 const { data: user } = await api.post<User>('/users', { name: '张三' });
 ```
 
+## SSE 实时事件
+
+从独立的 `@ahriknow/afetch/sse` 子路径导入 SSE 客户端。连接建立后即可接收服务器推送的事件。创建客户端时可配置 `onConnect`、`onMessage`、`onError` 和 `onClose` 回调，也可以在创建后赋值；这些回调会在所有插件钩子之后执行：
+
+```typescript
+import { createSSE } from '@ahriknow/afetch/sse';
+
+const events = createSSE('https://api.example.com/events', {
+    onMessage: ({ event }) => {
+        console.log(`[${event.event}]`, event.data);
+    },
+    onError: ({ error, attempt }) => {
+        console.error(`SSE 错误（第 ${attempt + 1} 次尝试）:`, error.message);
+    },
+});
+
+events.connect();
+
+// 也可以创建后设置或替换回调；回调在插件钩子之后执行
+events.onMessage = ({ event }) => console.log('新消息:', event.data);
+
+// 页面或组件销毁时关闭连接，并停止自动重连
+// events.close();
+```
+
+## WebSocket 实时通信
+
+从 `@ahriknow/afetch/ws` 导入 WebSocket 客户端。创建客户端时可配置 `onOpen`、`onMessage`、`onError`、`onClose` 和 `onSend` 回调，也可以在创建后赋值；这些回调会在所有插件钩子之后执行。可以在连接打开后发送消息，并监听服务端消息：
+
+```typescript
+import { createWS } from '@ahriknow/afetch/ws';
+
+const socket = createWS('wss://api.example.com/ws', {
+    autoParse: true,
+    autoReconnect: true,
+    onMessage: ({ message }) => console.log('收到消息:', message.data),
+    onError: ({ error }) => console.error('WebSocket 错误:', error.message),
+});
+
+socket.onOpen = () => socket.send({ type: 'subscribe', channel: 'updates' });
+socket.connect();
+
+// 连接建立后也可以随时发送消息
+// socket.send({ type: 'ping' });
+
+// 不再需要时关闭连接
+// socket.close();
+```
+
 ### 重试插件
 
 ```typescript

@@ -195,6 +195,48 @@ describe('createWS', () => {
         expect(ws.defaults).toBeDefined();
     });
 
+    it('should expose configurable callbacks that can be replaced and cleared', () => {
+        const configured = () => {};
+        const assigned = () => {};
+        const ws = createWS('ws://example.com/ws', {
+            onOpen: configured,
+            onMessage: configured,
+            onError: configured,
+            onClose: configured,
+            onSend: configured,
+        });
+
+        expect(ws.onOpen).toBe(configured);
+        expect(ws.onMessage).toBe(configured);
+        expect(ws.onError).toBe(configured);
+        expect(ws.onClose).toBe(configured);
+        expect(ws.onSend).toBe(configured);
+
+        ws.onOpen = assigned;
+        ws.onMessage = assigned;
+        ws.onError = assigned;
+        ws.onClose = assigned;
+        ws.onSend = assigned;
+
+        expect(ws.onOpen).toBe(assigned);
+        expect(ws.onMessage).toBe(assigned);
+        expect(ws.onError).toBe(assigned);
+        expect(ws.onClose).toBe(assigned);
+        expect(ws.onSend).toBe(assigned);
+
+        ws.onOpen = undefined;
+        ws.onMessage = undefined;
+        ws.onError = undefined;
+        ws.onClose = undefined;
+        ws.onSend = undefined;
+
+        expect(ws.onOpen).toBeUndefined();
+        expect(ws.onMessage).toBeUndefined();
+        expect(ws.onError).toBeUndefined();
+        expect(ws.onClose).toBeUndefined();
+        expect(ws.onSend).toBeUndefined();
+    });
+
     // ─── connect ───────────────────────────────────────────
 
     it('should connect to a WebSocket URL', async () => {
@@ -592,6 +634,109 @@ describe('createWS', () => {
         expect(ctx.data).toBe('test message');
         ws.close();
         await flushMicrotasks();
+    });
+
+    it('should run config and assigned callbacks after all plugin hooks', async () => {
+        const order: string[] = [];
+        const MockWS = createMockWebSocketClass({
+            messages: ['{"type":"update"}', '{"type":"next"}'],
+        });
+        let ws: ReturnType<typeof createWS>;
+        const assignedMessage = jest.fn(() => order.push('assigned-message'));
+
+        ws = createWS('ws://example.com/ws', {
+            autoReconnect: false,
+            webSocketImpl: MockWS,
+            onOpen: () => order.push('config-open'),
+            onMessage: () => {
+                order.push('config-message');
+                ws.onMessage = assignedMessage;
+            },
+            onSend: () => order.push('config-send'),
+            onClose: () => order.push('config-close'),
+            plugins: [
+                {
+                    name: 'first',
+                    install(api) {
+                        api.addHook('open', () => order.push('plugin-open'));
+                        api.addHook('message', () => order.push('plugin-message'));
+                        api.addHook('send', () => order.push('plugin-send'));
+                        api.addHook('close', () => order.push('plugin-close'));
+                    },
+                },
+                {
+                    name: 'second',
+                    install(api) {
+                        api.addHook('message', () => order.push('second-plugin-message'));
+                    },
+                },
+            ],
+        });
+
+        ws.connect();
+        await new Promise((resolve) => setTimeout(resolve, 35));
+        ws.send({ type: 'ping' });
+        await flushMicrotasks();
+        ws.close();
+        await flushMicrotasks();
+
+        expect(order).toEqual([
+            'plugin-open',
+            'config-open',
+            'plugin-message',
+            'second-plugin-message',
+            'config-message',
+            'plugin-message',
+            'second-plugin-message',
+            'assigned-message',
+            'plugin-send',
+            'config-send',
+            'plugin-close',
+            'config-close',
+        ]);
+    });
+
+    it('should run all error plugins before the config callback', async () => {
+        const order: string[] = [];
+        const MockWS = createMockWebSocketClass({ autoConnect: false });
+        const ws = createWS('ws://example.com/ws', {
+            autoReconnect: true,
+            maxReconnectAttempts: 2,
+            reconnectDelay: 1,
+            timeout: 10,
+            webSocketImpl: MockWS,
+            onError: () => {
+                order.push('callback-error');
+                return false;
+            },
+            plugins: [
+                {
+                    name: 'stop-reconnect',
+                    install(api) {
+                        api.addHook('error', () => {
+                            order.push('first-plugin-error');
+                            return false;
+                        });
+                    },
+                },
+                {
+                    name: 'observe-error',
+                    install(api) {
+                        api.addHook('error', () => order.push('second-plugin-error'));
+                    },
+                },
+            ],
+        });
+
+        ws.connect();
+        await new Promise((resolve) => setTimeout(resolve, 30));
+
+        expect(order).toEqual([
+            'first-plugin-error',
+            'second-plugin-error',
+            'callback-error',
+        ]);
+        expect(ws.state).toBe(WSState.CLOSED);
     });
 
     // ─── error types ───────────────────────────────────────
